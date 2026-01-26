@@ -44,13 +44,43 @@ async fn execute_query(state: State<'_, DatabaseState>, name: String, sql: Strin
 }
 
 #[tauri::command]
-async fn get_tables(state: State<'_, DatabaseState>, name: String) -> Result<Vec<String>, String> {
+async fn get_schemas(state: State<'_, DatabaseState>, name: String) -> Result<Vec<String>, String> {
     let client = {
         let pools = state.connections.lock().unwrap();
         pools.get(&name).cloned().ok_or("Connection not found")?
     };
 
-    db::get_tables(&client).await
+    db::get_schemas(&client).await
+}
+
+#[tauri::command]
+async fn get_tables(state: State<'_, DatabaseState>, name: String, schema: Option<String>) -> Result<Vec<String>, String> {
+    let client = {
+        let pools = state.connections.lock().unwrap();
+        pools.get(&name).cloned().ok_or("Connection not found")?
+    };
+
+    db::get_tables(&client, schema).await
+}
+
+#[tauri::command]
+async fn get_views(state: State<'_, DatabaseState>, name: String, schema: Option<String>) -> Result<Vec<String>, String> {
+    let client = {
+        let pools = state.connections.lock().unwrap();
+        pools.get(&name).cloned().ok_or("Connection not found")?
+    };
+
+    db::get_views(&client, schema).await
+}
+
+#[tauri::command]
+async fn get_functions(state: State<'_, DatabaseState>, name: String, schema: Option<String>) -> Result<Vec<String>, String> {
+    let client = {
+        let pools = state.connections.lock().unwrap();
+        pools.get(&name).cloned().ok_or("Connection not found")?
+    };
+
+    db::get_functions(&client, schema).await
 }
 
 #[tauri::command]
@@ -120,7 +150,11 @@ pub fn run() {
         connect_db,
         disconnect_db, 
         execute_query, 
+        execute_query, 
         get_tables,
+        get_views,
+        get_functions,
+        get_schemas,
         test_conn, 
         save_connections, 
         load_connections,

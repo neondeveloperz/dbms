@@ -7,6 +7,8 @@ use tiberius::{Client, Config};
 use serde::{Serialize};
 use serde_json::{json, Value};
 use url::Url;
+use futures::TryStreamExt;
+use sqlx::Executor; // For describe()
 
 // Enum to hold different client types
 #[derive(Clone)]
@@ -91,23 +93,36 @@ pub async fn execute_query(client: &DbClient, query: String) -> Result<QueryResp
     match client {
         DbClient::Mssql(client_arc) => {
              let mut client = client_arc.lock().await;
-             let stream = client.simple_query(&query).await.map_err(|e| e.to_string())?;
-             let rows: Vec<tiberius::Row> = stream.into_first_result().await.map_err(|e| e.to_string())?;
+             let mut stream = client.simple_query(&query).await.map_err(|e| e.to_string())?;
              
-             if rows.is_empty() {
-                 return Ok(QueryResponse { columns: vec![], rows: vec![] });
-             }
+             let mut columns: Vec<String> = Vec::new();
+             let mut rows = Vec::new();
 
-             let columns: Vec<String> = rows[0].columns().iter().map(|c| c.name().to_string()).collect();
-             let result_rows: Vec<Vec<Value>> = rows.iter().map(|r| serialize_mssql_row(r)).collect();
+             // Iterate stream to capture metadata (columns) and rows
+             while let Some(item) = stream.try_next().await.map_err(|e| e.to_string())? {
+                 match item {
+                     tiberius::QueryItem::Metadata(meta) => {
+                         columns = meta.columns().iter().map(|c| c.name().to_string()).collect();
+                     },
+                     tiberius::QueryItem::Row(row) => {
+                         rows.push(serialize_mssql_row(&row));
+                     },
+                     _ => {}
+                 }
+             }
              
-             Ok(QueryResponse { columns, rows: result_rows })
+             Ok(QueryResponse { columns, rows })
         },
         DbClient::Mysql(pool) => {
             use sqlx::{Column, Row};
             let rows = sqlx::query(&query).fetch_all(pool).await.map_err(|e| e.to_string())?;
             
             if rows.is_empty() {
+                // If empty, try describe to get columns
+                if let Ok(desc) = pool.describe(&query).await {
+                    let columns: Vec<String> = desc.columns().iter().map(|c| c.name().to_string()).collect();
+                    return Ok(QueryResponse { columns, rows: vec![] });
+                }
                 return Ok(QueryResponse { columns: vec![], rows: vec![] });
             }
             
@@ -133,6 +148,11 @@ pub async fn execute_query(client: &DbClient, query: String) -> Result<QueryResp
             let rows = sqlx::query(&query).fetch_all(pool).await.map_err(|e| e.to_string())?;
             
             if rows.is_empty() {
+                // If empty, try describe to get columns
+                if let Ok(desc) = pool.describe(&query).await {
+                     let columns: Vec<String> = desc.columns().iter().map(|c| c.name().to_string()).collect();
+                     return Ok(QueryResponse { columns, rows: vec![] });
+                }
                 return Ok(QueryResponse { columns: vec![], rows: vec![] });
             }
             
@@ -257,13 +277,50 @@ pub async fn test_connection(conn_str: &str) -> Result<String, String> {
     }
 }
 
-pub async fn get_tables(client: &DbClient) -> Result<Vec<String>, String> {
+pub async fn get_schemas(client: &DbClient) -> Result<Vec<String>, String> {
     match client {
         DbClient::Mssql(client_arc) => {
-             println!("Fetching tables for MSSQL");
+            let mut client = client_arc.lock().await;
+            let query = "SELECT name FROM sys.schemas";
+            let stream = client.simple_query(query).await.map_err(|e| e.to_string())?;
+            let rows: Vec<tiberius::Row> = stream.into_first_result().await.map_err(|e| e.to_string())?;
+            let schemas: Vec<String> = rows.iter().filter_map(|r| r.try_get::<&str, _>(0).ok().flatten().map(|s| s.to_string())).collect();
+            Ok(schemas)
+        },
+        DbClient::Mysql(pool) => {
+             // In MySQL, schemas are databases.
+             use sqlx::Row;
+             let rows = sqlx::query("SHOW DATABASES")
+                .fetch_all(pool).await.map_err(|e| e.to_string())?;
+             let schemas: Vec<String> = rows.iter().map(|r| r.get(0)).collect();
+             Ok(schemas)
+        },
+        DbClient::Postgres(pool) => {
+             use sqlx::Row;
+             let rows = sqlx::query("SELECT schema_name FROM information_schema.schemata")
+                .fetch_all(pool).await.map_err(|e| e.to_string())?;
+             let schemas: Vec<String> = rows.iter().map(|r| r.get(0)).collect();
+             Ok(schemas)
+        },
+        DbClient::Mongo(client) => {
+             // MongoDB has databases
+             let dbs = client.list_database_names().await.map_err(|e| e.to_string())?;
+             Ok(dbs)
+        },
+        DbClient::Redis(_) => {
+             Ok(vec!["0".to_string()]) // Redis has numbered databases, detailed enumeration is complex, assume 0 for now or just return single "default"
+        }
+    }
+}
+
+pub async fn get_tables(client: &DbClient, schema: Option<String>) -> Result<Vec<String>, String> {
+    match client {
+        DbClient::Mssql(client_arc) => {
+             println!("Fetching tables for MSSQL, schema: {:?}", schema);
              let mut client = client_arc.lock().await;
-             let query = "SELECT table_name FROM information_schema.tables WHERE table_type = 'BASE TABLE'";
-             let stream = client.simple_query(query).await.map_err(|e| e.to_string())?;
+             let target_schema = schema.unwrap_or_else(|| "dbo".to_string());
+             let query = format!("SELECT table_name FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema = '{}'", target_schema);
+             let stream = client.simple_query(&query).await.map_err(|e| e.to_string())?;
              let rows: Vec<tiberius::Row> = stream.into_first_result().await.map_err(|e| e.to_string())?;
              let mut tables = Vec::new();
              for row in rows {
@@ -275,26 +332,36 @@ pub async fn get_tables(client: &DbClient) -> Result<Vec<String>, String> {
              Ok(tables)
         },
         DbClient::Mysql(pool) => {
-             println!("Fetching tables for MySQL");
+             println!("Fetching tables for MySQL, schema: {:?}", schema);
              use sqlx::Row;
-             let rows = sqlx::query("SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()")
+             // MySQL schema is the database name. If schema is provided, we might need to switch or qualify.
+             // Usually connection is to a specific DB. If we want to view another schema, we query information_schema with TABLE_SCHEMA
+             let target_schema = schema.unwrap_or_else(|| "DATABASE()".to_string());
+             let q = if target_schema == "DATABASE()" {
+                 "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()".to_string()
+             } else {
+                 format!("SELECT table_name FROM information_schema.tables WHERE table_schema = '{}'", target_schema)
+             };
+             let rows = sqlx::query(&q)
                 .fetch_all(pool).await.map_err(|e| e.to_string())?;
              let tables: Vec<String> = rows.iter().map(|r| r.get(0)).collect();
              println!("Found {} tables", tables.len());
              Ok(tables)
         },
         DbClient::Postgres(pool) => {
-             println!("Fetching tables for Postgres");
+             println!("Fetching tables for Postgres, schema: {:?}", schema);
              use sqlx::Row;
-             let rows = sqlx::query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+             let target_schema = schema.unwrap_or_else(|| "public".to_string());
+             let q = format!("SELECT table_name FROM information_schema.tables WHERE table_schema = '{}'", target_schema);
+             let rows = sqlx::query(&q)
                 .fetch_all(pool).await.map_err(|e| e.to_string())?;
              let tables: Vec<String> = rows.iter().map(|r| r.get(0)).collect();
              println!("Found {} tables", tables.len());
              Ok(tables)
         },
         DbClient::Mongo(client) => {
-             println!("Fetching collections for MongoDB");
-             let db_name = client.default_database().ok_or("No default database")?.name().to_string();
+             println!("Fetching collections for MongoDB, db: {:?}", schema);
+             let db_name = schema.unwrap_or_else(|| client.default_database().map(|d| d.name().to_string()).unwrap_or("test".to_string()));
              let db = client.database(&db_name);
              let collections = db.list_collection_names().await.map_err(|e| e.to_string())?;
              println!("Found {} collections", collections.len());
@@ -303,5 +370,75 @@ pub async fn get_tables(client: &DbClient) -> Result<Vec<String>, String> {
         DbClient::Redis(_) => {
             Ok(vec!["Keys (Use 'SCAN' in query)".to_string()])
         }
+    }
+}
+
+pub async fn get_views(client: &DbClient, schema: Option<String>) -> Result<Vec<String>, String> {
+    match client {
+        DbClient::Mssql(client_arc) => {
+            let mut client = client_arc.lock().await;
+            let target_schema = schema.unwrap_or_else(|| "dbo".to_string());
+            let query = format!("SELECT DISTINCT table_name FROM information_schema.views WHERE table_schema = '{}'", target_schema);
+            let stream = client.simple_query(&query).await.map_err(|e| e.to_string())?;
+            let rows: Vec<tiberius::Row> = stream.into_first_result().await.map_err(|e| e.to_string())?;
+            let views: Vec<String> = rows.iter().filter_map(|r| r.try_get::<&str, _>(0).ok().flatten().map(|s| s.to_string())).collect();
+            Ok(views)
+        },
+        DbClient::Mysql(pool) => {
+             use sqlx::Row;
+             let target_schema = schema.unwrap_or_else(|| "DATABASE()".to_string());
+             let q = if target_schema == "DATABASE()" {
+                 "SELECT DISTINCT table_name FROM information_schema.views WHERE table_schema = DATABASE()".to_string()
+             } else {
+                 format!("SELECT DISTINCT table_name FROM information_schema.views WHERE table_schema = '{}'", target_schema)
+             };
+             let rows = sqlx::query(&q).fetch_all(pool).await.map_err(|e| e.to_string())?;
+             let views: Vec<String> = rows.iter().map(|r| r.get(0)).collect();
+             Ok(views)
+        },
+        DbClient::Postgres(pool) => {
+             use sqlx::Row;
+             let target_schema = schema.unwrap_or_else(|| "public".to_string());
+             let q = format!("SELECT DISTINCT table_name FROM information_schema.views WHERE table_schema = '{}'", target_schema);
+             let rows = sqlx::query(&q).fetch_all(pool).await.map_err(|e| e.to_string())?;
+             let views: Vec<String> = rows.iter().map(|r| r.get(0)).collect();
+             Ok(views)
+        },
+        _ => Ok(vec![])
+    }
+}
+
+pub async fn get_functions(client: &DbClient, schema: Option<String>) -> Result<Vec<String>, String> {
+    match client {
+        DbClient::Mssql(client_arc) => {
+            let mut client = client_arc.lock().await;
+            let target_schema = schema.unwrap_or_else(|| "dbo".to_string());
+            let query = format!("SELECT DISTINCT routine_name FROM information_schema.routines WHERE routine_type = 'FUNCTION' AND routine_schema = '{}'", target_schema);
+            let stream = client.simple_query(&query).await.map_err(|e| e.to_string())?;
+            let rows: Vec<tiberius::Row> = stream.into_first_result().await.map_err(|e| e.to_string())?;
+            let functions: Vec<String> = rows.iter().filter_map(|r| r.try_get::<&str, _>(0).ok().flatten().map(|s| s.to_string())).collect();
+            Ok(functions)
+        },
+        DbClient::Mysql(pool) => {
+             use sqlx::Row;
+             let target_schema = schema.unwrap_or_else(|| "DATABASE()".to_string());
+             let q = if target_schema == "DATABASE()" {
+                 "SELECT DISTINCT routine_name FROM information_schema.routines WHERE routine_type = 'FUNCTION' AND routine_schema = DATABASE()".to_string()
+             } else {
+                 format!("SELECT DISTINCT routine_name FROM information_schema.routines WHERE routine_type = 'FUNCTION' AND routine_schema = '{}'", target_schema)
+             };
+             let rows = sqlx::query(&q).fetch_all(pool).await.map_err(|e| e.to_string())?;
+             let functions: Vec<String> = rows.iter().map(|r| r.get(0)).collect();
+             Ok(functions)
+        },
+        DbClient::Postgres(pool) => {
+             use sqlx::Row;
+             let target_schema = schema.unwrap_or_else(|| "public".to_string());
+             let q = format!("SELECT DISTINCT routine_name FROM information_schema.routines WHERE routine_type = 'FUNCTION' AND routine_schema = '{}'", target_schema);
+             let rows = sqlx::query(&q).fetch_all(pool).await.map_err(|e| e.to_string())?;
+             let functions: Vec<String> = rows.iter().map(|r| r.get(0)).collect();
+             Ok(functions)
+        },
+        _ => Ok(vec![])
     }
 }
