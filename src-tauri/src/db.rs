@@ -125,7 +125,6 @@ pub async fn execute_query(client: &DbClient, query: String) -> Result<QueryResp
                     tiberius::QueryItem::Row(row) => {
                         rows.push(serialize_mssql_row(&row));
                     }
-                    _ => {}
                 }
             }
 

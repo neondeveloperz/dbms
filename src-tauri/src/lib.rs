@@ -175,7 +175,7 @@ async fn load_settings(app: tauri::AppHandle) -> Result<Settings, String> {
     }
 
     let json = fs::read_to_string(&path).map_err(|e| format!("Failed to read settings: {}", e))?;
-    let settings: Settings = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+    let settings: Settings = serde_json::from_str(&json).unwrap_or_else(|_| Settings::default());
     Ok(settings)
 }
 
@@ -203,7 +203,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             connect_db,
             disconnect_db,
-            execute_query,
             execute_query,
             get_tables,
             get_views,
