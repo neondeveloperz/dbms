@@ -1,6 +1,6 @@
 # 🌌 DBMS
 
-![Build Status](https://github.com/neondeveloperz/dbms/actions/workflows/build.yml/badge.svg)
+[![Release](https://github.com/neondeveloperz/dbms/actions/workflows/release.yml/badge.svg)](https://github.com/neondeveloperz/dbms/actions/workflows/release.yml)
 
 A modern, high-performance Database Management System built with **Tauri v2**, **Next.js 15**, and **Rust**. Effortlessly manage multiple database types with a minimalist and blazing-fast interface.
 
