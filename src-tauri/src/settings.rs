@@ -11,7 +11,7 @@ pub struct Settings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppearanceSettings {
-    pub theme: String, // "light", "dark", "auto"
+    pub theme: String,     // "light", "dark", "auto"
     pub font_size: String, // "small", "medium", "large"
     pub editor_font: String,
 }
@@ -33,7 +33,7 @@ pub struct ConnectionSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportSettings {
     pub default_format: String, // "csv", "json", "excel"
-    pub csv_delimiter: String, // ",", ";", "\t"
+    pub csv_delimiter: String,  // ",", ";", "\t"
     pub include_headers: bool,
 }
 
