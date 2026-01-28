@@ -48,7 +48,7 @@ export type QueryTab = {
     id: string;
     title: string;
     query: string;
-    results: { columns: string[]; rows: any[][] } | null;
+    results: { columns: string[]; rows: unknown[][] } | null;
     error: string | null;
     connName: string | null;
     isExecuting: boolean;

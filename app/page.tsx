@@ -72,6 +72,10 @@ export default function Home() {
 
   // Global Error State
   // const [globalError, setGlobalError] = useState<string | null>(null); // Removed since unused
+  const editorRef = useRef<any>(null); // Monaco editor type is complex, keeping any for now to avoid breaking editor integration
+  const [tabContextMenu, setTabContextMenu] = useState<{ x: number, y: number, tabId: string } | null>(null);
+  const [rowContextMenu, setRowContextMenu] = useState<{ x: number, y: number, row: unknown[] } | null>(null);
+  const [editingCell, setEditingCell] = useState<{ rowIdx: number, colIdx: number, value: unknown } | null>(null);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -148,6 +152,10 @@ export default function Home() {
 
   // Resize Handlers
   useEffect(() => {
+    const handleEditorDidMount = (editor: any) => { // Monaco editor type is complex
+      editorRef.current = editor;
+    };
+
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
       const newWidth = e.clientX - 48; // Subtract activity bar width
@@ -176,7 +184,11 @@ export default function Home() {
 
   // Close context menu on click
   useEffect(() => {
-    const handleClick = () => setContextMenu(null);
+    const handleClick = () => {
+      setContextMenu(null);
+      setTabContextMenu(null);
+      setRowContextMenu(null);
+    };
     window.addEventListener("click", handleClick);
     return () => window.removeEventListener("click", handleClick);
   }, []);
@@ -262,7 +274,7 @@ export default function Home() {
 
   useEffect(() => {
     refreshTables();
-  }, [activeConnName, selectedSchema, connections]); // Added connections to dependency to retry if status changes
+  }, [activeConnName, selectedSchema, connections, refreshTables]);
 
   async function saveConnectionsToBackend(newConnections: Connection[]) {
     const saved: SavedConnection[] = newConnections.map(c => ({
@@ -489,9 +501,7 @@ export default function Home() {
 
     const colName = columns[colIndex];
     // Try to determine best format for newValue based on original value type if possible, or just quote string
-    // If original was number, and newValue is string that looks like number?
-    // But input always returns string.
-    // Heuristic: If old value was number, and new value is number-like, treat as number.
+    // If original was number, and new value is number-like, treat as number.
     // If old value was boolean, literal true/false/1/0.
 
     const originalValue = row[colIndex];
@@ -571,12 +581,8 @@ export default function Home() {
   function handleSort(colName: string) {
     setTabs(prev => prev.map(t => {
       if (t.id !== activeTabId) return t;
-      const currentSort = t.sortState;
-      let newSort: { col: string; dir: 'asc' | 'desc' } = { col: colName, dir: 'asc' };
-      if (currentSort && currentSort.col === colName && currentSort.dir === 'asc') {
-        newSort.dir = 'desc';
-      }
-      return { ...t, sortState: newSort };
+      const newDir = (t.sortState && t.sortState.col === colName && t.sortState.dir === 'asc') ? 'desc' : 'asc';
+      return { ...t, sortState: { col: colName, dir: newDir } };
     }));
   }
 

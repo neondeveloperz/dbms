@@ -44,7 +44,7 @@ export function QueryEditor({
 
     const activeTab = tabs.find(t => t.id === activeTabId);
     const monaco = useMonaco();
-    const editorRef = useRef<any>(null); // Monaco editor type is complex, keeping any for now but could be improved later if needed
+    const editorRef = useRef<any>(null); // Monaco editor type is complex
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, tabId: string } | null>(null);
     const [rowContextMenu, setRowContextMenu] = useState<{ x: number, y: number, row: unknown[] } | null>(null);
     const [editingCell, setEditingCell] = useState<{ rowIdx: number, colIdx: number, value: unknown } | null>(null);
@@ -84,7 +84,7 @@ export function QueryEditor({
         }
     }, [monaco, settings.appearance.theme]);
 
-    const handleEditorDidMount = (editor: any) => {
+    const handleEditorDidMount = (editor: any) => { // Monaco editor type is complex
         editorRef.current = editor;
     };
 
@@ -309,7 +309,7 @@ export function QueryEditor({
                         // I need to duplicate that sorting logic here or move it to a helper.
                         // For now, I'll copy the sorting logic here.
 
-                        let displayRows = [...results.rows];
+                        const displayRows = [...results.rows];
                         if (activeTab.sortState) {
                             const { col, dir } = activeTab.sortState;
                             const colIdx = results.columns.indexOf(col);

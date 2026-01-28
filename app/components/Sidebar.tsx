@@ -99,7 +99,7 @@ export function Sidebar({
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            { onConnect && onConnect(conn.name); }
+                                                            if (onConnect) onConnect(conn.name);
                                                         }}
                                                         className="opacity-0 group-hover:opacity-100 p-1 hover:bg-blue-500 hover:text-white rounded transition-all text-text-muted"
                                                         title="Connect"
