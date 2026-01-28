@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "lint:rust": "cd src-tauri && cargo fmt --all -- --check",
     "format:rust": "cd src-tauri && cargo fmt --all",
     "tauri": "tauri"
