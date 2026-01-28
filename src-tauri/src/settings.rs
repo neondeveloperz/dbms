@@ -98,4 +98,3 @@ impl Default for AdvancedSettings {
         }
     }
 }
-
