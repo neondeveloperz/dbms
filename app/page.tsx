@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Pencil, Trash2, Copy, PowerOff } from "lucide-react";
 import { cn } from "@/app/lib/utils";
@@ -72,10 +72,6 @@ export default function Home() {
 
   // Global Error State
   // const [globalError, setGlobalError] = useState<string | null>(null); // Removed since unused
-  const editorRef = useRef<any>(null); // Monaco editor type is complex, keeping any for now to avoid breaking editor integration
-  const [tabContextMenu, setTabContextMenu] = useState<{ x: number, y: number, tabId: string } | null>(null);
-  const [rowContextMenu, setRowContextMenu] = useState<{ x: number, y: number, row: unknown[] } | null>(null);
-  const [editingCell, setEditingCell] = useState<{ rowIdx: number, colIdx: number, value: unknown } | null>(null);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -152,9 +148,6 @@ export default function Home() {
 
   // Resize Handlers
   useEffect(() => {
-    const handleEditorDidMount = (editor: any) => { // Monaco editor type is complex
-      editorRef.current = editor;
-    };
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
@@ -186,8 +179,6 @@ export default function Home() {
   useEffect(() => {
     const handleClick = () => {
       setContextMenu(null);
-      setTabContextMenu(null);
-      setRowContextMenu(null);
     };
     window.addEventListener("click", handleClick);
     return () => window.removeEventListener("click", handleClick);
@@ -236,7 +227,7 @@ export default function Home() {
   }, []);
 
   // Fetch schemas and tables logic
-  const refreshTables = async () => {
+  const refreshTables = useCallback(async () => {
     if (!activeConnName) return;
     const conn = connections.find(c => c.name === activeConnName);
     if (conn?.status !== 'connected') return;
@@ -270,7 +261,7 @@ export default function Home() {
     } catch (e) {
       console.error("Failed to refresh tables:", e);
     }
-  };
+  }, [activeConnName, connections, schemas, selectedSchema]);
 
   useEffect(() => {
     refreshTables();

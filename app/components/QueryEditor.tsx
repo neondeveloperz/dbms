@@ -44,7 +44,8 @@ export function QueryEditor({
 
     const activeTab = tabs.find(t => t.id === activeTabId);
     const monaco = useMonaco();
-    const editorRef = useRef<any>(null); // Monaco editor type is complex
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const editorRef = useRef<any>(null);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, tabId: string } | null>(null);
     const [rowContextMenu, setRowContextMenu] = useState<{ x: number, y: number, row: unknown[] } | null>(null);
     const [editingCell, setEditingCell] = useState<{ rowIdx: number, colIdx: number, value: unknown } | null>(null);
@@ -84,7 +85,8 @@ export function QueryEditor({
         }
     }, [monaco, settings.appearance.theme]);
 
-    const handleEditorDidMount = (editor: any) => { // Monaco editor type is complex
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleEditorDidMount = (editor: any) => {
         editorRef.current = editor;
     };
 
