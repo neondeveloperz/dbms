@@ -14,7 +14,7 @@ import { Connection, SavedConnection, Settings, QueryTab, DbType } from "./types
 import { ActivityBar } from "./components/ActivityBar";
 import { StatusBar } from "./components/StatusBar";
 import { Sidebar } from "./components/Sidebar";
-import { ConfirmDialog } from "./components/ConfirmDialog";
+// Unused ConfirmDialog removed
 import { DebugTerminal, LogEntry } from "./components/DebugTerminal";
 import { SettingsView } from "./components/SettingsView";
 import { ConnectionModal } from "./components/ConnectionModal";
@@ -71,7 +71,7 @@ export default function Home() {
   const [activeTabId, setActiveTabId] = useState<string>('1');
 
   // Global Error State
-  const [globalError, setGlobalError] = useState<string | null>(null);
+  // const [globalError, setGlobalError] = useState<string | null>(null); // Removed since unused
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -99,7 +99,7 @@ export default function Home() {
     const originalWarn = console.warn;
     const originalError = console.error;
 
-    const formatArgs = (args: any[]) => {
+    const formatArgs = (args: unknown[]) => {
       return args.map(arg => {
         if (typeof arg === 'object') {
           try {
@@ -112,7 +112,7 @@ export default function Home() {
       }).join(' ');
     };
 
-    const addLog = (type: 'log' | 'warn' | 'error', args: any[]) => {
+    const addLog = (type: 'log' | 'warn' | 'error', args: unknown[]) => {
       const message = formatArgs(args);
       const timestamp = new Date().toLocaleTimeString();
       setLogs(prev => [...prev.slice(-100), { type, message, timestamp }]); // Keep last 100
@@ -211,7 +211,8 @@ export default function Home() {
       })
       .catch(e => {
         console.error("Failed to load connections:", e);
-        setGlobalError(`Load error: ${e}`);
+        console.error("Failed to load connections:", e);
+        // setGlobalError(`Load error: ${e}`); // Removed unused variable
       });
   }, []);
 
@@ -306,7 +307,8 @@ export default function Home() {
     } catch (e) {
       console.error("Failed to connect after save:", e);
       // Just save as disconnected
-      setGlobalError(`Saved but failed to connect: ${e}`);
+      console.error("Failed to connect after save:", e);
+      // setGlobalError(`Saved but failed to connect: ${e}`); // Removed unused variable
     }
   }
 
@@ -378,8 +380,8 @@ export default function Home() {
       if (name && name !== activeConnName) {
         setActiveConnName(name);
       }
-    } catch (e: any) {
-      setConnections(prev => prev.map(c => c.name === targetName ? { ...c, status: 'error', error: e.toString() } : c));
+    } catch (e: unknown) {
+      setConnections(prev => prev.map(c => c.name === targetName ? { ...c, status: 'error', error: String(e) } : c));
       console.error(`Failed to connect to ${targetName}:`, e);
     }
   }
@@ -407,15 +409,15 @@ export default function Home() {
     }
 
     try {
-      const res = await invoke<{ columns: string[]; rows: any[][] }>("execute_query", {
+      const res = await invoke<{ columns: string[]; rows: unknown[][] }>("execute_query", {
         name: targetConnName,
         sql: finalSql,
       });
       console.log(`Query executed successfully: ${finalSql}\nRows affected: ${res.rows.length}`);
       setTabs(prev => prev.map(t => t.id === targetTabId ? { ...t, results: res, isExecuting: false } : t));
-    } catch (e: any) {
-      console.error(`Query failed: ${finalSql}\nError: ${e.toString()}`);
-      setTabs(prev => prev.map(t => t.id === targetTabId ? { ...t, error: e.toString(), isExecuting: false } : t));
+    } catch (e: unknown) {
+      console.error(`Query failed: ${finalSql}\nError: ${String(e)}`);
+      setTabs(prev => prev.map(t => t.id === targetTabId ? { ...t, error: String(e), isExecuting: false } : t));
     }
   }
 
@@ -429,13 +431,13 @@ export default function Home() {
       console.log(`Update executed successfully.`);
       // Refresh the data
       await runQuery(tabId);
-    } catch (e: any) {
-      setGlobalError(`Update/Delete failed: ${e.toString()}`);
-      console.error(`Update failed SQL: ${sql}\nError: ${e.toString()}`);
+    } catch (e: unknown) {
+      // setGlobalError(`Update/Delete failed: ${e.toString()}`); // Removed unused variable
+      console.error(`Update failed SQL: ${sql}\nError: ${String(e)}`);
     }
   }
 
-  function formatSqlValue(val: any, dbType: string): string {
+  function formatSqlValue(val: unknown, dbType: string): string {
     if (val === null) return "NULL";
     if (typeof val === 'boolean') {
       if (dbType === 'mssql') return val ? '1' : '0';
@@ -450,7 +452,7 @@ export default function Home() {
     return `'${String(val).replace(/'/g, "''")}'`;
   }
 
-  function constructWhereClause(row: any[], columns: string[], dbType: string) {
+  function constructWhereClause(row: unknown[], columns: string[], dbType: string) {
     return columns.map((col, i) => {
       const val = row[i];
       if (val === null) return `${col} IS NULL`;
@@ -459,7 +461,7 @@ export default function Home() {
     }).join(' AND ');
   }
 
-  function deleteRow(tabId: string, row: any[], columns: string[]) {
+  function deleteRow(tabId: string, row: unknown[], columns: string[]) {
     const tab = tabs.find(t => t.id === tabId);
     if (!tab || !tab.tableName || !tab.connName) return;
 
@@ -474,7 +476,7 @@ export default function Home() {
     executeUpdate(tab.connName, sql, tabId);
   }
 
-  function updateCell(tabId: string, row: any[], columns: string[], colIndex: number, newValue: any) {
+  function updateCell(tabId: string, row: unknown[], columns: string[], colIndex: number, newValue: unknown) {
     const tab = tabs.find(t => t.id === tabId);
     if (!tab || !tab.tableName || !tab.connName) return;
 

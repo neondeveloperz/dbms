@@ -76,7 +76,7 @@ export function ConnectionModal({ isOpen, onClose, onSave, editingConnection, ex
     const getConnectionString = () => {
         if (connMethod === 'url') return rawUrl;
         // Basic construction
-        let protocol = type === 'mssql' ? 'sqlserver' : type;
+        const protocol = type === 'mssql' ? 'sqlserver' : type;
         return `${protocol}://${user}:${password}@${host}:${port}/${database}`;
     };
 
@@ -87,8 +87,8 @@ export function ConnectionModal({ isOpen, onClose, onSave, editingConnection, ex
             const url = getConnectionString();
             await invoke("test_connection", { url });
             setTestResult({ success: true, msg: "Connection successful!" });
-        } catch (e: any) {
-            setTestResult({ success: false, msg: e.toString() });
+        } catch (e: unknown) {
+            setTestResult({ success: false, msg: String(e) });
         } finally {
             setIsTesting(false);
         }

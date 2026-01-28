@@ -1,4 +1,4 @@
-import { Play, AlertCircle, ArrowUp, ArrowDown, X, Plus, Trash2, Pencil } from "lucide-react";
+import { Play, AlertCircle, ArrowUp, ArrowDown, X, Plus, Trash2 } from "lucide-react";
 import Editor, { useMonaco } from "@monaco-editor/react";
 import { cn } from "@/app/lib/utils";
 import { QueryTab, Connection, Settings } from "../types";
@@ -38,16 +38,16 @@ export function QueryEditor({
 }: QueryEditorProps & {
     onCloseAll: () => void;
     onCloseToRight: (id: string) => void;
-    onDeleteRow?: (tabId: string, row: any[], columns: string[]) => void;
-    onUpdateCell?: (tabId: string, row: any[], columns: string[], colIndex: number, newValue: any) => void;
+    onDeleteRow?: (tabId: string, row: unknown[], columns: string[]) => void;
+    onUpdateCell?: (tabId: string, row: unknown[], columns: string[], colIndex: number, newValue: unknown) => void;
 }) {
 
     const activeTab = tabs.find(t => t.id === activeTabId);
     const monaco = useMonaco();
-    const editorRef = useRef<any>(null);
+    const editorRef = useRef<any>(null); // Monaco editor type is complex, keeping any for now but could be improved later if needed
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, tabId: string } | null>(null);
-    const [rowContextMenu, setRowContextMenu] = useState<{ x: number, y: number, row: any[] } | null>(null);
-    const [editingCell, setEditingCell] = useState<{ rowIdx: number, colIdx: number, value: any } | null>(null);
+    const [rowContextMenu, setRowContextMenu] = useState<{ x: number, y: number, row: unknown[] } | null>(null);
+    const [editingCell, setEditingCell] = useState<{ rowIdx: number, colIdx: number, value: unknown } | null>(null);
 
     const [confirmState, setConfirmState] = useState<{
         isOpen: boolean;
@@ -96,11 +96,11 @@ export function QueryEditor({
         }
     };
 
-    const formatValue = (val: any) => {
+    const formatValue = (val: unknown) => {
         if (val === null) return <span className="text-neutral-600 italic">null</span>;
         if (typeof val === 'boolean') return <span className={val ? "text-green-500" : "text-red-500"}>{val.toString()}</span>;
         if (typeof val === 'object') return JSON.stringify(val);
-        return val.toString();
+        return String(val);
     };
 
     const handleContextMenu = (e: React.MouseEvent, tabId: string) => {
@@ -108,34 +108,22 @@ export function QueryEditor({
         setContextMenu({ x: e.clientX, y: e.clientY, tabId });
     };
 
-    const handleRowContextMenu = (e: React.MouseEvent, row: any[]) => {
+    const handleRowContextMenu = (e: React.MouseEvent, row: unknown[]) => {
         if (activeTab?.viewType !== 'data' || !onDeleteRow) return;
         e.preventDefault();
         e.stopPropagation(); // Prevent grid click?
         setRowContextMenu({ x: e.clientX, y: e.clientY, row });
     };
 
-    const handleCellDoubleClick = (e: React.MouseEvent, rowIdx: number, colIdx: number, value: any) => {
+    const handleCellDoubleClick = (e: React.MouseEvent, rowIdx: number, colIdx: number, value: unknown) => {
         if (activeTab?.viewType !== 'data' || !onUpdateCell) return;
         e.stopPropagation();
         setEditingCell({ rowIdx, colIdx, value });
     };
 
-    const commitEdit = () => {
-        if (!editingCell || !activeTab?.results || !onUpdateCell) return;
-        const { rowIdx, colIdx, value } = editingCell;
+    // Simplified: handleEditKeyDown calls onUpdateCell directly
 
-        // Find the original row data (need to account for sort if I was using original index, but here I'm using displayed index)
-        // Wait, if I use displayed index, I need to make sure I get the RIGHT row from the SORTED list.
-        // I will reconstruct the sorted list inside the render to know which row is which, OR I pass the row object to the edit state.
-        // It's cleaner to pass the ROW itself to editingCell, but `rowIdx` is needed for UI key/position.
-        // Let's rely on the render loop to provide the row data again? No, let's grab it from the sorted list.
-        // Actually, inside the render map, I can pass a callback that already knows the row.
-        // Let's refine commitEdit to take args or access a stable ref.
-        // Simpler: handleKeyDown calls commit with value.
-    };
-
-    const handleEditKeyDown = (e: React.KeyboardEvent, row: any[], columns: string[]) => {
+    const handleEditKeyDown = (e: React.KeyboardEvent, row: unknown[], columns: string[]) => {
         if (e.key === 'Enter') {
             if (onUpdateCell && editingCell) {
                 // Trigger Confirmation
@@ -195,7 +183,7 @@ export function QueryEditor({
                     <button
                         onClick={() => {
                             // Mock event for closeTab
-                            closeTab({ stopPropagation: () => { } } as any, contextMenu.tabId);
+                            closeTab({ stopPropagation: () => { } } as React.MouseEvent, contextMenu.tabId);
                         }}
                         className="text-left px-3 py-1.5 hover:bg-item-bg flex items-center gap-2"
                     >
@@ -231,7 +219,7 @@ export function QueryEditor({
                                     isOpen: true,
                                     title: "Delete Row",
                                     message: "Are you sure you want to delete this row? This action cannot be undone.",
-                                    onConfirm: () => onDeleteRow(activeTabId, rowContextMenu.row, activeTab?.results?.columns || []),
+                                    onConfirm: () => onDeleteRow(activeTabId, rowContextMenu.row as unknown[], activeTab?.results?.columns || []),
                                     isDestructive: true
                                 });
                             }
@@ -384,7 +372,7 @@ export function QueryEditor({
                                                             <input
                                                                 ref={editInputRef}
                                                                 className="w-full bg-page-bg text-text-main border border-blue-500 rounded px-1 py-0.5 outline-none -ml-1"
-                                                                value={editingCell.value === null ? '' : editingCell.value}
+                                                                value={editingCell.value === null ? '' : String(editingCell.value)}
                                                                 onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
                                                                 onClick={(e) => e.stopPropagation()}
                                                                 onKeyDown={(e) => handleEditKeyDown(e, row, results.columns)}

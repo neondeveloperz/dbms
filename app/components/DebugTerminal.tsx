@@ -1,4 +1,4 @@
-import { X, Trash2, Terminal, ChevronDown } from "lucide-react";
+import { Trash2, Terminal, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/app/lib/utils";
 

@@ -1,4 +1,4 @@
-import { Server, GitBranch, Info } from "lucide-react";
+import { Server, Info } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 import { Connection } from "../types";
 
