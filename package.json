@@ -7,7 +7,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "next lint",
+    "lint:rust": "cd src-tauri && cargo fmt --all -- --check",
+    "format:rust": "cd src-tauri && cargo fmt --all",
     "tauri": "tauri"
   },
   "dependencies": {
