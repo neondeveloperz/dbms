@@ -5,7 +5,7 @@ export type Connection = {
     url: string;
     type: DbType;
     color: string;
-    status: 'connected' | 'disconnected' | 'error';
+    status: 'connected' | 'disconnected' | 'connecting' | 'error';
     error?: string;
 };
 
@@ -56,4 +56,6 @@ export type QueryTab = {
     viewType: 'data' | 'query';
     tableName?: string;
     schema?: string;
+    isAddingRow?: boolean;
+    newRowData?: Record<string, unknown>;
 };

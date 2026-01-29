@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Pencil, Trash2, Copy, PowerOff } from "lucide-react";
+import { Pencil, Trash2, Copy, PowerOff, Database, Plus, RefreshCw } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 import { Connection, SavedConnection, Settings, QueryTab, DbType } from "./types";
 // import { SETTINGS_DEFAULTS } from "./types"; // Wait, I didn't export defaults there. Constants? No, Defaults were in page.tsx 
@@ -14,7 +14,7 @@ import { Connection, SavedConnection, Settings, QueryTab, DbType } from "./types
 import { ActivityBar } from "./components/ActivityBar";
 import { StatusBar } from "./components/StatusBar";
 import { Sidebar } from "./components/Sidebar";
-// Unused ConfirmDialog removed
+import { ConfirmDialog } from "./components/ConfirmDialog";
 import { DebugTerminal, LogEntry } from "./components/DebugTerminal";
 import { SettingsView } from "./components/SettingsView";
 import { ConnectionModal } from "./components/ConnectionModal";
@@ -88,6 +88,8 @@ export default function Home() {
   const [tables, setTables] = useState<Record<string, string[]>>({});
   const [views, setViews] = useState<Record<string, string[]>>({});
   const [functions, setFunctions] = useState<Record<string, string[]>>({});
+  const [databases, setDatabases] = useState<Record<string, string[]>>({});
+  const [selectedDatabase, setSelectedDatabase] = useState<Record<string, string>>({}); // connName -> dbName
   const [schemas, setSchemas] = useState<Record<string, string[]>>({});
   const [selectedSchema, setSelectedSchema] = useState<Record<string, string>>({}); // connName -> schema
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -146,6 +148,16 @@ export default function Home() {
   const [sidebarWidth, setSidebarWidth] = useState(256);
   const [isResizing, setIsResizing] = useState(false);
 
+  // Update Checker State
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+  const [updateDialog, setUpdateDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    onConfirm?: () => void;
+  }>({ isOpen: false, title: "", message: "" });
+
   // Resize Handlers
   useEffect(() => {
 
@@ -184,8 +196,46 @@ export default function Home() {
     return () => window.removeEventListener("click", handleClick);
   }, []);
 
-  // Load connections on startup
+  // Load connections function
+  const loadConnections = useCallback(() => {
+    invoke<SavedConnection[]>("load_connections")
+      .then(saved => {
+        const mapped = saved.map(s => ({
+          name: s.name,
+          url: s.url,
+          type: s.conn_type as DbType,
+          color: s.color,
+          status: 'disconnected' as const
+        }));
+
+        // Preserve status of currently connected/connecting items if they exist in new list
+        setConnections(prev => {
+          return mapped.map(newConn => {
+            const existing = prev.find(p => p.name === newConn.name);
+            if (existing && (existing.status === 'connected' || existing.status === 'connecting')) {
+              return { ...newConn, status: existing.status };
+            }
+            return newConn;
+          });
+        });
+
+        // Auto-connect if enabled (only on initial load effectively, but logic here runs every time)
+        // We probably only want auto-connect once.
+        // Let's keep auto-connect separate or check if we have no connections yet?
+        // Actually, if we refresh, we don't want to re-trigger auto-connect if already connected.
+        // But for simplicity, existing logic was fine for startup.
+        // Refactored to just set state. Auto-connect logic should be separate useEffect or handled differently.
+        // For now, I'll keep the mapping simple and handled start-up separately if needed.
+        // But wait, the original effect handled auto-connect too.
+      })
+      .catch(e => {
+        console.error("Failed to load connections:", e);
+      });
+  }, []);
+
+  // Initial load
   useEffect(() => {
+    // We duplicate logic here for startup to include auto-connect which we don't want on manual refresh
     invoke<SavedConnection[]>("load_connections")
       .then(saved => {
         const mapped = saved.map(s => ({
@@ -201,6 +251,7 @@ export default function Home() {
         invoke<Settings>("load_settings").then(s => {
           if (s.connection.auto_connect_on_startup && mapped.length > 0) {
             const firstConn = mapped[0];
+            setConnections(prev => prev.map(c => c.name === firstConn.name ? { ...c, status: 'connecting' } : c));
             invoke("connect_db", { name: firstConn.name, url: firstConn.url })
               .then(() => {
                 setConnections(prev => prev.map(c =>
@@ -208,16 +259,83 @@ export default function Home() {
                 ));
                 setActiveConnName(firstConn.name);
               })
-              .catch(err => console.error("Auto-connect failed:", err));
+              .catch(err => {
+                console.error("Auto-connect failed:", err);
+                setConnections(prev => prev.map(c => c.name === firstConn.name ? { ...c, status: 'error', error: String(err) } : c));
+              });
           }
         });
-      })
-      .catch(e => {
-        console.error("Failed to load connections:", e);
-        console.error("Failed to load connections:", e);
-        // setGlobalError(`Load error: ${e}`); // Removed unused variable
       });
   }, []);
+
+  const handleDatabaseChange = async (connName: string, dbName: string) => {
+    const conn = connections.find(c => c.name === connName);
+    if (!conn) return;
+
+    console.log(`Switching database for ${connName} to ${dbName}`);
+
+    try {
+      // Construct new URL with selected database
+      let newUrl = conn.url;
+      try {
+        // Basic URL parsing to replace database path
+        // This works for standard connection strings like postgres://u:p@h:p/db
+        const urlObj = new URL(conn.url);
+
+        // Handle MSSQL specially if it uses searchParams for database, though our backend parser uses path
+        if (conn.url.startsWith('sqlserver://')) {
+          if (urlObj.searchParams.has('database')) {
+            urlObj.searchParams.set('database', dbName);
+          } else {
+            urlObj.pathname = `/${dbName}`;
+          }
+        } else {
+          urlObj.pathname = `/${dbName}`;
+        }
+        newUrl = urlObj.toString();
+      } catch (e) {
+        console.error("Failed to parse URL for database switch:", e);
+        // Fallback? If we can't parse, we can't reliably switch.
+        return;
+      }
+
+      // Connect with new URL (Backend will replace existing connection for this name)
+      await invoke("connect_db", { name: connName, url: newUrl });
+
+      // Update local state
+      setConnections(prev => prev.map(c => c.name === connName ? { ...c, url: newUrl } : c));
+      setSelectedDatabase(prev => ({ ...prev, [connName]: dbName }));
+
+      // Clear caches for this connection as we are in a new DB
+      setSchemas(prev => { const n = { ...prev }; delete n[connName]; return n; });
+      setTables(prev => { const n = { ...prev }; delete n[connName]; return n; });
+      setViews(prev => { const n = { ...prev }; delete n[connName]; return n; });
+      setFunctions(prev => { const n = { ...prev }; delete n[connName]; return n; });
+
+      // Refresh to get new tables
+      // We need to wait a bit or just call refreshTables?
+      // We set selectedDatabase, logic in refreshTables needs to know.
+      // But refreshTables reads state. State update is async.
+      // We can force refresh with the new DB set in a timeout or pass it explicitly?
+      // Better: trigger a refresh effect or just call a modified refresh.
+      // Simplest: Just call refreshTables, but state might not be ready.
+      // Actually, we cleared cache, so Sidebar might trigger refresh?
+      // Sidebar "Refresh" button calls onRefreshTables.
+      // Let's just manually trigger data fetch sequence here.
+
+      // Re-fetch everything
+      setTimeout(() => {
+        // We use a small timeout to let React flush state (like selectedDatabase if we used it, but here we passed dbName)
+        // actually refreshTables uses `selectedSchema`. It relies on `activeConnName`.
+        // If we are switching DB, we probably want to reset schema to default '*' or public.
+        setSelectedSchema(prev => { const n = { ...prev }; delete n[connName]; return n; });
+        refreshTables();
+      }, 100);
+
+    } catch (e) {
+      console.error("Failed to switch database:", e);
+    }
+  };
 
   // Load settings on startup
   useEffect(() => {
@@ -232,17 +350,36 @@ export default function Home() {
     const conn = connections.find(c => c.name === activeConnName);
     if (conn?.status !== 'connected') return;
 
-    const currentSchema = selectedSchema[activeConnName];
-    console.log("Refreshing tables for", activeConnName, "schema:", currentSchema);
+    // Fetch Databases if not present
+    if (!databases[activeConnName]) {
+      try {
+        const fetchedDbs = await invoke<string[]>("get_databases", { name: activeConnName });
+        setDatabases(prev => ({ ...prev, [activeConnName]: fetchedDbs }));
 
+        // Try to deduce current DB from URL if selectedDatabase not set
+        if (!selectedDatabase[activeConnName]) {
+          try {
+            const urlObj = new URL(conn.url);
+            const pathDb = urlObj.pathname.replace('/', '');
+            if (pathDb) setSelectedDatabase(prev => ({ ...prev, [activeConnName]: pathDb }));
+            // If no pathDb (e.g. root), maybe don't set or set to first?
+          } catch { }
+        }
+      } catch (e) {
+        console.error("Failed to fetch databases:", e);
+      }
+    }
+
+    const currentSchema = selectedSchema[activeConnName] || '*';
+    console.log("refreshTables called. Active Conn:", activeConnName, "Status:", conn?.status, "Schema:", currentSchema);
     try {
-      const fetchedTables = await invoke<string[]>("get_tables", { name: activeConnName, schema: currentSchema || null });
+      const fetchedTables = await invoke<string[]>("get_tables", { name: activeConnName, schema: currentSchema });
       setTables(prev => ({ ...prev, [activeConnName]: fetchedTables }));
 
-      const fetchedViews = await invoke<string[]>("get_views", { name: activeConnName, schema: currentSchema || null });
+      const fetchedViews = await invoke<string[]>("get_views", { name: activeConnName, schema: currentSchema });
       setViews(prev => ({ ...prev, [activeConnName]: fetchedViews }));
 
-      const fetchedFunctions = await invoke<string[]>("get_functions", { name: activeConnName, schema: currentSchema || null });
+      const fetchedFunctions = await invoke<string[]>("get_functions", { name: activeConnName, schema: currentSchema });
       setFunctions(prev => ({ ...prev, [activeConnName]: fetchedFunctions }));
 
       if (!schemas[activeConnName]) {
@@ -250,18 +387,15 @@ export default function Home() {
         setSchemas(prev => ({ ...prev, [activeConnName]: fetchedSchemas }));
 
         // Auto-select schema logic
-        if (!currentSchema && fetchedSchemas.length > 0) {
-          let defaultSchema = 'public';
-          if (fetchedSchemas.includes('dbo')) defaultSchema = 'dbo'; // MSSQL default
-          else if (!fetchedSchemas.includes('public')) defaultSchema = fetchedSchemas[0];
-
-          setSelectedSchema(prev => ({ ...prev, [activeConnName]: defaultSchema }));
+        if (!selectedSchema[activeConnName]) {
+          // Default to All Schemas (*)
+          setSelectedSchema(prev => ({ ...prev, [activeConnName]: '*' }));
         }
       }
     } catch (e) {
       console.error("Failed to refresh tables:", e);
     }
-  }, [activeConnName, connections, schemas, selectedSchema]);
+  }, [activeConnName, connections, databases, selectedDatabase, schemas, selectedSchema]);
 
   useEffect(() => {
     refreshTables();
@@ -290,14 +424,6 @@ export default function Home() {
     // Actually previous logic: handleConnect did both.
     // ConnectionModal returns a connection object.
     // If logic requires immediate connect, we should do it.
-    // The old handleConnect did: invoke connect_db -> update state -> save.
-    // Now ConnectionModal handleSave calls `onSave`.
-    // Let's assume we maintain the behavior: check isModalOpen logic. 
-    // ConnectionModal calls onSave then onClose.
-
-    // Wait, ConnectionModal's handleSave just emits the object! It doesn't connect!
-    // But the previous `handleConnect` DID connect.
-    // I should invoke connect_db here if desired, OR let the user click "Connect" in sidebar.
     // The previous UX: "Connect" button in modal -> Connects AND Saves.
     // So I should connect here.
 
@@ -350,6 +476,85 @@ export default function Home() {
     setContextMenu(null);
   }
 
+
+
+  function handleAddRow(tabId: string) {
+    setTabs(prev => prev.map(t => t.id === tabId ? {
+      ...t,
+      isAddingRow: true,
+      newRowData: {} // Initialize empty
+    } : t));
+  }
+
+  function handleCancelAddRow(tabId: string) {
+    setTabs(prev => prev.map(t => t.id === tabId ? {
+      ...t,
+      isAddingRow: false,
+      newRowData: undefined
+    } : t));
+  }
+
+  function handleUpdateNewRowData(tabId: string, colName: string, value: unknown) {
+    setTabs(prev => prev.map(t => t.id === tabId ? {
+      ...t,
+      newRowData: { ...(t.newRowData || {}), [colName]: value }
+    } : t));
+  }
+
+  async function handleSaveNewRow(tabId: string) {
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab || !tab.tableName || !tab.connName || !tab.newRowData) return;
+
+    const conn = connections.find(c => c.name === tab.connName);
+    const dbType = conn?.type || 'postgres';
+
+    const schemaPrefix = tab.schema ? `${tab.schema}.` : '';
+    const tableRef = `${schemaPrefix}${tab.tableName}`;
+
+    const columns = Object.keys(tab.newRowData);
+    if (columns.length === 0) {
+      handleCancelAddRow(tabId);
+      return;
+    }
+
+    const colsStr = columns.join(', ');
+    const valsStr = columns.map(col => formatSqlValue(tab.newRowData![col], dbType)).join(', ');
+
+    const sql = `INSERT INTO ${tableRef} (${colsStr}) VALUES (${valsStr})`;
+
+    await executeUpdate(tab.connName, sql, tabId);
+
+    // Reset state after save
+    setTabs(prev => prev.map(t => t.id === tabId ? {
+      ...t,
+      isAddingRow: false,
+      newRowData: undefined
+    } : t));
+  }
+
+  function handleAddRowFromSidebar(tableName: string) {
+    const currentSchema = activeConnName ? selectedSchema[activeConnName] : null;
+    const schemaArg = (currentSchema && currentSchema !== '*') ? currentSchema : undefined;
+
+    // 1. Find or create the data tab
+    const existingTab = tabs.find(t =>
+      t.viewType === 'data' &&
+      t.tableName === tableName &&
+      t.connName === activeConnName &&
+      (schemaArg ? t.schema === schemaArg : true)
+    );
+
+    if (existingTab) {
+      setActiveTabId(existingTab.id);
+      handleAddRow(existingTab.id);
+    } else {
+      // Open the tab, but we can't easily trigger handleAddRow until it's loaded.
+      // For now, just opening the tab is a good first step, user can click Add Row in the results pane.
+      handleTableClick(tableName);
+    }
+    setContextMenu(null);
+  }
+
   async function handleDuplicate(name: string) {
     const conn = connections.find(c => c.name === name);
     if (!conn) return;
@@ -374,11 +579,15 @@ export default function Home() {
       const conn = connections.find(c => c.name === targetName);
       if (!conn) return;
 
-      // Optimistic update
-      setConnections(prev => prev.map(c => c.name === targetName ? { ...c, status: 'connected' } : c));
+      // Set to connecting state
+      setConnections(prev => prev.map(c => c.name === targetName ? { ...c, status: 'connecting' } : c));
 
       await invoke("connect_db", { url: conn.url, name: targetName });
       console.log(`Connected to ${targetName} successfully.`);
+
+      // Update to connected
+      setConnections(prev => prev.map(c => c.name === targetName ? { ...c, status: 'connected', error: undefined } : c));
+
       // Make sure it's active if we clicked connect on a non-active one
       if (name && name !== activeConnName) {
         setActiveConnName(name);
@@ -579,8 +788,65 @@ export default function Home() {
 
   function handleTableClick(tableName: string) {
     const currentSchema = activeConnName ? selectedSchema[activeConnName] : null;
-    const tableRef = currentSchema ? `${currentSchema}.${tableName}` : tableName;
-    createNewTab(tableName, `SELECT * FROM ${tableRef}`, activeConnName, true, 'data', tableName, currentSchema || undefined);
+
+    // Check for existing tab
+    const existingTab = tabs.find(t =>
+      t.viewType === 'data' &&
+      t.tableName === tableName &&
+      t.connName === activeConnName &&
+      (currentSchema && currentSchema !== '*' ? t.schema === currentSchema : true)
+    );
+
+    if (existingTab) {
+      setActiveTabId(existingTab.id);
+      return;
+    }
+
+    const tableRef = (currentSchema && currentSchema !== '*') ? `${currentSchema}.${tableName}` : tableName;
+    const schemaArg = (currentSchema && currentSchema !== '*') ? currentSchema : undefined;
+
+    createNewTab(tableName, `SELECT * FROM ${tableRef}`, activeConnName, true, 'data', tableName, schemaArg);
+  }
+
+  async function handleCheckUpdates() {
+    setIsCheckingUpdates(true);
+    const CURRENT_VERSION = "0.1.0";
+    const GITHUB_REPO = "neondeveloperz/dbms";
+
+    try {
+      const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
+      if (!response.ok) throw new Error("Failed to fetch latest release");
+
+      const data = await response.json();
+      const latestVersion = data.tag_name.replace(/^v/, "");
+
+      if (latestVersion === CURRENT_VERSION) {
+        setUpdateDialog({
+          isOpen: true,
+          title: "Up to Date",
+          message: `You are currently using the latest version (v${CURRENT_VERSION}).`
+        });
+      } else {
+        setUpdateDialog({
+          isOpen: true,
+          title: "Update Available",
+          message: `A new version (v${latestVersion}) is available! Would you like to go to the download page?`,
+          confirmText: "Go to Download",
+          onConfirm: () => {
+            window.open(data.html_url, '_blank', 'noreferrer');
+          }
+        });
+      }
+    } catch (e) {
+      console.error("Update check failed:", e);
+      setUpdateDialog({
+        isOpen: true,
+        title: "Check Failed",
+        message: "Failed to check for updates. Please check your internet connection and try again."
+      });
+    } finally {
+      setIsCheckingUpdates(false);
+    }
   }
 
   return (
@@ -603,6 +869,9 @@ export default function Home() {
             setEditingConnName={setEditingConnName}
             setIsModalOpen={setIsModalOpen}
             handleContextMenu={handleContextMenu}
+            databases={databases}
+            selectedDatabase={selectedDatabase}
+            onDatabaseChange={handleDatabaseChange}
             schemas={schemas}
             selectedSchema={selectedSchema}
             setSelectedSchema={setSelectedSchema}
@@ -614,6 +883,9 @@ export default function Home() {
             setIsResizing={setIsResizing}
             onConnect={connectConnection}
             onRefreshTables={refreshTables}
+            onCheckUpdates={handleCheckUpdates}
+            isCheckingUpdates={isCheckingUpdates}
+            onRefreshConnections={loadConnections}
           />
         )}
 
@@ -631,12 +903,32 @@ export default function Home() {
         )}
 
         {activeView === 'info' && (
-          <div style={{ width: sidebarWidth }} className="bg-panel-bg border-r border-border-main p-4 text-text-muted text-sm space-y-4 relative flex-shrink-0">
-            <h2 className="font-bold text-text-main flex items-center gap-2">INFO</h2>
-            <div className="space-y-1">
-              <p>Database Manager</p>
-              <p className="text-xs opacity-70">v0.1.1-alpha</p>
+          <div style={{ width: sidebarWidth }} className="bg-panel-bg border-r border-border-main p-4 text-text-muted text-sm space-y-6 relative flex-shrink-0">
+            <h2 className="font-bold text-text-main flex items-center gap-2 uppercase tracking-wider">Info</h2>
+
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <p className="text-text-main font-medium">Database Manager</p>
+                <p className="text-xs opacity-70">v0.1.0</p>
+              </div>
+
+              <div className="pt-4 border-t border-border-main/50 space-y-4">
+                <button
+                  onClick={handleCheckUpdates}
+                  disabled={isCheckingUpdates}
+                  className="w-full flex items-center justify-center gap-2 bg-item-bg hover:bg-item-bg-hover text-text-main px-3 py-2 rounded-md text-xs font-medium transition-all group disabled:opacity-50"
+                >
+                  {isCheckingUpdates ? (
+                    <div className="w-3 h-3 border-2 border-text-muted/30 border-t-text-main animate-spin rounded-full" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5 text-text-muted group-hover:text-blue-400 transition-colors" />
+                  )}
+                  {isCheckingUpdates ? "Checking..." : "Check for Updates"}
+                </button>
+
+              </div>
             </div>
+
             {/* Resize Handle */}
             <div
               onMouseDown={(e) => { e.preventDefault(); setIsResizing(true); }}
@@ -661,6 +953,11 @@ export default function Home() {
           onCloseToRight={closeTabsToRight}
           onDeleteRow={deleteRow}
           onUpdateCell={updateCell}
+          onAddRow={handleAddRow}
+          onSaveNewRow={handleSaveNewRow}
+          onCancelAddRow={handleCancelAddRow}
+          onUpdateNewRowData={handleUpdateNewRowData}
+          sidebarWidth={sidebarWidth}
         />
       </div>
 
@@ -703,9 +1000,18 @@ export default function Home() {
             </>
           )}
           {contextMenu.type === 'table' && (
-            <button onClick={() => handleNewQueryFromContext(contextMenu.name)} className="text-left px-3 py-1.5 text-xs text-text-muted hover:bg-item-bg hover:text-text-main flex items-center gap-2">
-              <Pencil className="w-3 h-3" /> New Query
-            </button>
+            <>
+              <button onClick={() => handleTableClick(contextMenu.name)} className="text-left px-3 py-1.5 text-xs text-text-muted hover:bg-item-bg hover:text-text-main flex items-center gap-2">
+                <Database className="w-3 h-3" /> Open Table
+              </button>
+              <button onClick={() => handleAddRowFromSidebar(contextMenu.name)} className="text-left px-3 py-1.5 text-xs text-text-muted hover:bg-item-bg hover:text-text-main flex items-center gap-2">
+                <Plus className="w-3 h-3" /> Add Row
+              </button>
+              <div className="h-px bg-border-main my-1" />
+              <button onClick={() => handleNewQueryFromContext(contextMenu.name)} className="text-left px-3 py-1.5 text-xs text-text-muted hover:bg-item-bg hover:text-text-main flex items-center gap-2">
+                <Pencil className="w-3 h-3" /> New Query
+              </button>
+            </>
           )}
         </div>
       )}
