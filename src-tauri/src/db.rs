@@ -480,6 +480,47 @@ pub async fn get_schemas(client: &DbClient) -> Result<Vec<String>, String> {
     }
 }
 
+pub async fn get_databases(client: &DbClient) -> Result<Vec<String>, String> {
+    match client {
+        DbClient::Mssql(client_arc) => {
+            let mut client = client_arc.lock().await;
+            let query = "SELECT name FROM sys.databases WHERE name NOT IN ('master', 'tempdb', 'model', 'msdb')";
+            let stream = client.simple_query(query).await.map_err(|e| e.to_string())?;
+            let rows: Vec<tiberius::Row> = stream.into_first_result().await.map_err(|e| e.to_string())?;
+            let dbs: Vec<String> = rows
+                .iter()
+                .filter_map(|r| r.try_get::<&str, _>(0).ok().flatten().map(|s| s.to_string()))
+                .collect();
+            Ok(dbs)
+        }
+        DbClient::Mysql(pool) => {
+            use sqlx::Row;
+            let rows = sqlx::query("SHOW DATABASES")
+                .fetch_all(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+            let dbs: Vec<String> = rows.iter().map(|r| r.get(0)).collect();
+            Ok(dbs)
+        }
+        DbClient::Postgres(pool) => {
+            use sqlx::Row;
+            let rows = sqlx::query("SELECT datname FROM pg_database WHERE datistemplate = false")
+                .fetch_all(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+            let dbs: Vec<String> = rows.iter().map(|r| r.get(0)).collect();
+            Ok(dbs)
+        }
+        DbClient::Mongo(client) => {
+            let dbs = client.list_database_names().await.map_err(|e| e.to_string())?;
+            Ok(dbs)
+        }
+        DbClient::Redis(_) => {
+            Ok((0..16).map(|i| i.to_string()).collect())
+        }
+    }
+}
+
 pub async fn get_tables(client: &DbClient, schema: Option<String>) -> Result<Vec<String>, String> {
     match client {
         DbClient::Mssql(client_arc) => {

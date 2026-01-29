@@ -24,6 +24,12 @@ interface SidebarProps {
     onConnect?: (name: string) => void;
     onRefreshTables?: () => void;
     onRefreshConnections?: () => void;
+    onCheckUpdates?: () => void;
+    isCheckingUpdates?: boolean;
+    currentVersion?: string;
+    databases: Record<string, string[]>;
+    selectedDatabase: Record<string, string>;
+    onDatabaseChange: (connName: string, dbName: string) => void;
 }
 
 export function Sidebar({
@@ -46,7 +52,13 @@ export function Sidebar({
     createNewTab,
     setIsResizing,
     onConnect,
-    onRefreshTables
+    onRefreshTables,
+    onCheckUpdates,
+    isCheckingUpdates,
+    currentVersion = "0.1.0",
+    databases,
+    selectedDatabase,
+    onDatabaseChange
 }: SidebarProps) {
     return (
         <div style={{ width: sidebarWidth }} className="bg-panel-bg border-r border-border-main flex flex-col relative flex-shrink-0">
@@ -148,18 +160,42 @@ export function Sidebar({
                         <div className="flex-1 overflow-y-auto p-0 scrollbar-thin scrollbar-thumb-border-main scrollbar-track-transparent">
                             {activeConnName && connections.find(c => c.name === activeConnName)?.status === 'connected' ? (
                                 <div className="py-2 pb-6 space-y-4 text-sm">
+                                    {/* Database Selector */}
+                                    {databases[activeConnName] && databases[activeConnName].length > 0 && (
+                                        <div className="relative px-4 pt-1">
+                                            <div className="text-[10px] text-text-muted/70 uppercase tracking-widest font-bold mb-1 pl-1 flex items-center gap-1.5">
+                                                <Database className="w-3 h-3" /> Database
+                                            </div>
+                                            <div className="relative">
+                                                <select
+                                                    value={selectedDatabase[activeConnName] || ''}
+                                                    onChange={(e) => onDatabaseChange(activeConnName, e.target.value)}
+                                                    className="w-full bg-item-bg border border-border-main rounded-md px-2.5 py-1.5 text-xs text-text-main appearance-none outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all font-medium pl-2.5"
+                                                >
+                                                    {databases[activeConnName].map(db => <option key={db} value={db}>{db}</option>)}
+                                                </select>
+                                                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-2 text-text-muted pointer-events-none" />
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Schema Selector */}
                                     {schemas[activeConnName] && schemas[activeConnName].length > 0 && (
                                         <div className="relative px-4 pt-1">
-                                            <select
-                                                value={selectedSchema[activeConnName] || ''}
-                                                onChange={(e) => setSelectedSchema(prev => ({ ...prev, [activeConnName]: e.target.value }))}
-                                                className="w-full bg-item-bg border border-border-main rounded-md px-2.5 py-1.5 text-xs text-text-main appearance-none outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all font-medium"
-                                            >
-                                                <option value="*">All Schemas</option>
-                                                {schemas[activeConnName].map(s => <option key={s} value={s}>{s}</option>)}
-                                            </select>
-                                            <ChevronDown className="w-3.5 h-3.5 absolute right-6 top-3 text-text-muted pointer-events-none" />
+                                            <div className="text-[10px] text-text-muted/70 uppercase tracking-widest font-bold mb-1 pl-1 flex items-center gap-1.5">
+                                                <Table2 className="w-3 h-3" /> Schema
+                                            </div>
+                                            <div className="relative">
+                                                <select
+                                                    value={selectedSchema[activeConnName] || ''}
+                                                    onChange={(e) => setSelectedSchema(prev => ({ ...prev, [activeConnName]: e.target.value }))}
+                                                    className="w-full bg-item-bg border border-border-main rounded-md px-2.5 py-1.5 text-xs text-text-main appearance-none outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all font-medium pl-2.5"
+                                                >
+                                                    <option value="*">All Schemas</option>
+                                                    {schemas[activeConnName].map(s => <option key={s} value={s}>{s}</option>)}
+                                                </select>
+                                                <ChevronDown className="w-3.5 h-3.5 absolute right-6 top-2 text-text-muted pointer-events-none" />
+                                            </div>
                                         </div>
                                     )}
 
@@ -247,10 +283,19 @@ export function Sidebar({
             </div>
 
             {/* Version Info Footer */}
-            <div className="p-2 border-t border-border-main">
-                <p className="text-[9px] text-text-muted text-center opacity-50">DBMS v1.0.0</p>
+            <div className="p-2 border-t border-border-main bg-panel-bg/50">
+                <div className="flex items-center justify-between px-2">
+                    <p className="text-[9px] text-text-muted opacity-50 uppercase tracking-widest font-bold">v{currentVersion}</p>
+                    <button
+                        onClick={onCheckUpdates}
+                        disabled={isCheckingUpdates}
+                        className="p-1 hover:bg-item-bg rounded text-text-muted hover:text-blue-400 transition-all disabled:opacity-30"
+                        title="Check for Updates"
+                    >
+                        <RefreshCw className={cn("w-3 h-3", isCheckingUpdates && "animate-spin")} />
+                    </button>
+                </div>
             </div>
-
             {/* Resize Handle */}
             <div
                 onMouseDown={(e) => { e.preventDefault(); setIsResizing(true); }}

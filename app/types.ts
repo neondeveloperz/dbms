@@ -56,4 +56,6 @@ export type QueryTab = {
     viewType: 'data' | 'query';
     tableName?: string;
     schema?: string;
+    isAddingRow?: boolean;
+    newRowData?: Record<string, unknown>;
 };
