@@ -63,20 +63,22 @@ export function QueryEditor({
 
     // Initialize column widths when results change
     useEffect(() => {
-        if (activeTab?.results?.columns) {
-            setColWidths(prev => {
-                const newWidths = { ...prev };
-                let changed = false;
-                activeTab.results!.columns.forEach(col => {
-                    if (!newWidths[col]) {
-                        newWidths[col] = 150; // Default width
-                        changed = true;
-                    }
-                });
-                return changed ? newWidths : prev;
+        if (!activeTab?.results?.columns) return;
+
+        // eslint-disable-next-line
+        setColWidths(prev => {
+            const newWidths = { ...prev };
+            let changed = false;
+            activeTab.results!.columns.forEach(col => {
+                if (newWidths[col] === undefined) {
+                    newWidths[col] = 150; // Default width
+                    changed = true;
+                }
             });
-        }
-    }, [activeTab?.results?.columns]);
+            // Only update if changes were made
+            return changed ? newWidths : prev;
+        });
+    }, [activeTab?.results]);
 
     // Handle Resize
     useEffect(() => {
@@ -85,6 +87,7 @@ export function QueryEditor({
             const { col, startX, startWidth } = resizingRef.current;
             const diff = e.clientX - startX;
             const newWidth = Math.max(50, startWidth + diff); // Min width 50px
+
             setColWidths(prev => ({ ...prev, [col]: newWidth }));
         };
 
