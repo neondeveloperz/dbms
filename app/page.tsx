@@ -184,8 +184,46 @@ export default function Home() {
     return () => window.removeEventListener("click", handleClick);
   }, []);
 
-  // Load connections on startup
+  // Load connections function
+  const loadConnections = useCallback(() => {
+    invoke<SavedConnection[]>("load_connections")
+      .then(saved => {
+        const mapped = saved.map(s => ({
+          name: s.name,
+          url: s.url,
+          type: s.conn_type as DbType,
+          color: s.color,
+          status: 'disconnected' as const
+        }));
+
+        // Preserve status of currently connected/connecting items if they exist in new list
+        setConnections(prev => {
+          return mapped.map(newConn => {
+            const existing = prev.find(p => p.name === newConn.name);
+            if (existing && (existing.status === 'connected' || existing.status === 'connecting')) {
+              return { ...newConn, status: existing.status };
+            }
+            return newConn;
+          });
+        });
+
+        // Auto-connect if enabled (only on initial load effectively, but logic here runs every time)
+        // We probably only want auto-connect once.
+        // Let's keep auto-connect separate or check if we have no connections yet?
+        // Actually, if we refresh, we don't want to re-trigger auto-connect if already connected.
+        // But for simplicity, existing logic was fine for startup.
+        // Refactored to just set state. Auto-connect logic should be separate useEffect or handled differently.
+        // For now, I'll keep the mapping simple and handled start-up separately if needed.
+        // But wait, the original effect handled auto-connect too.
+      })
+      .catch(e => {
+        console.error("Failed to load connections:", e);
+      });
+  }, []);
+
+  // Initial load
   useEffect(() => {
+    // We duplicate logic here for startup to include auto-connect which we don't want on manual refresh
     invoke<SavedConnection[]>("load_connections")
       .then(saved => {
         const mapped = saved.map(s => ({
@@ -201,6 +239,7 @@ export default function Home() {
         invoke<Settings>("load_settings").then(s => {
           if (s.connection.auto_connect_on_startup && mapped.length > 0) {
             const firstConn = mapped[0];
+            setConnections(prev => prev.map(c => c.name === firstConn.name ? { ...c, status: 'connecting' } : c));
             invoke("connect_db", { name: firstConn.name, url: firstConn.url })
               .then(() => {
                 setConnections(prev => prev.map(c =>
@@ -208,14 +247,12 @@ export default function Home() {
                 ));
                 setActiveConnName(firstConn.name);
               })
-              .catch(err => console.error("Auto-connect failed:", err));
+              .catch(err => {
+                console.error("Auto-connect failed:", err);
+                setConnections(prev => prev.map(c => c.name === firstConn.name ? { ...c, status: 'error', error: String(err) } : c));
+              });
           }
         });
-      })
-      .catch(e => {
-        console.error("Failed to load connections:", e);
-        console.error("Failed to load connections:", e);
-        // setGlobalError(`Load error: ${e}`); // Removed unused variable
       });
   }, []);
 
@@ -232,17 +269,17 @@ export default function Home() {
     const conn = connections.find(c => c.name === activeConnName);
     if (conn?.status !== 'connected') return;
 
-    const currentSchema = selectedSchema[activeConnName];
-    console.log("Refreshing tables for", activeConnName, "schema:", currentSchema);
+    const currentSchema = selectedSchema[activeConnName] || '*';
+    console.log("refreshTables called. Active Conn:", activeConnName, "Status:", conn?.status, "Schema:", currentSchema);
 
     try {
-      const fetchedTables = await invoke<string[]>("get_tables", { name: activeConnName, schema: currentSchema || null });
+      const fetchedTables = await invoke<string[]>("get_tables", { name: activeConnName, schema: currentSchema });
       setTables(prev => ({ ...prev, [activeConnName]: fetchedTables }));
 
-      const fetchedViews = await invoke<string[]>("get_views", { name: activeConnName, schema: currentSchema || null });
+      const fetchedViews = await invoke<string[]>("get_views", { name: activeConnName, schema: currentSchema });
       setViews(prev => ({ ...prev, [activeConnName]: fetchedViews }));
 
-      const fetchedFunctions = await invoke<string[]>("get_functions", { name: activeConnName, schema: currentSchema || null });
+      const fetchedFunctions = await invoke<string[]>("get_functions", { name: activeConnName, schema: currentSchema });
       setFunctions(prev => ({ ...prev, [activeConnName]: fetchedFunctions }));
 
       if (!schemas[activeConnName]) {
@@ -250,12 +287,9 @@ export default function Home() {
         setSchemas(prev => ({ ...prev, [activeConnName]: fetchedSchemas }));
 
         // Auto-select schema logic
-        if (!currentSchema && fetchedSchemas.length > 0) {
-          let defaultSchema = 'public';
-          if (fetchedSchemas.includes('dbo')) defaultSchema = 'dbo'; // MSSQL default
-          else if (!fetchedSchemas.includes('public')) defaultSchema = fetchedSchemas[0];
-
-          setSelectedSchema(prev => ({ ...prev, [activeConnName]: defaultSchema }));
+        if (!selectedSchema[activeConnName]) {
+          // Default to All Schemas (*)
+          setSelectedSchema(prev => ({ ...prev, [activeConnName]: '*' }));
         }
       }
     } catch (e) {
@@ -374,11 +408,15 @@ export default function Home() {
       const conn = connections.find(c => c.name === targetName);
       if (!conn) return;
 
-      // Optimistic update
-      setConnections(prev => prev.map(c => c.name === targetName ? { ...c, status: 'connected' } : c));
+      // Set to connecting state
+      setConnections(prev => prev.map(c => c.name === targetName ? { ...c, status: 'connecting' } : c));
 
       await invoke("connect_db", { url: conn.url, name: targetName });
       console.log(`Connected to ${targetName} successfully.`);
+
+      // Update to connected
+      setConnections(prev => prev.map(c => c.name === targetName ? { ...c, status: 'connected', error: undefined } : c));
+
       // Make sure it's active if we clicked connect on a non-active one
       if (name && name !== activeConnName) {
         setActiveConnName(name);
@@ -579,8 +617,24 @@ export default function Home() {
 
   function handleTableClick(tableName: string) {
     const currentSchema = activeConnName ? selectedSchema[activeConnName] : null;
-    const tableRef = currentSchema ? `${currentSchema}.${tableName}` : tableName;
-    createNewTab(tableName, `SELECT * FROM ${tableRef}`, activeConnName, true, 'data', tableName, currentSchema || undefined);
+
+    // Check for existing tab
+    const existingTab = tabs.find(t =>
+      t.viewType === 'data' &&
+      t.tableName === tableName &&
+      t.connName === activeConnName &&
+      (currentSchema && currentSchema !== '*' ? t.schema === currentSchema : true)
+    );
+
+    if (existingTab) {
+      setActiveTabId(existingTab.id);
+      return;
+    }
+
+    const tableRef = (currentSchema && currentSchema !== '*') ? `${currentSchema}.${tableName}` : tableName;
+    const schemaArg = (currentSchema && currentSchema !== '*') ? currentSchema : undefined;
+
+    createNewTab(tableName, `SELECT * FROM ${tableRef}`, activeConnName, true, 'data', tableName, schemaArg);
   }
 
   return (
@@ -614,6 +668,7 @@ export default function Home() {
             setIsResizing={setIsResizing}
             onConnect={connectConnection}
             onRefreshTables={refreshTables}
+            onRefreshConnections={loadConnections}
           />
         )}
 

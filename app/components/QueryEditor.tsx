@@ -49,6 +49,61 @@ export function QueryEditor({
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, tabId: string } | null>(null);
     const [rowContextMenu, setRowContextMenu] = useState<{ x: number, y: number, row: unknown[] } | null>(null);
     const [editingCell, setEditingCell] = useState<{ rowIdx: number, colIdx: number, value: unknown } | null>(null);
+    const [colWidths, setColWidths] = useState<Record<string, number>>({});
+    const resizingRef = useRef<{ col: string, startX: number, startWidth: number } | null>(null);
+
+    // Initialize column widths when results change
+    useEffect(() => {
+        if (activeTab?.results?.columns) {
+            setColWidths(prev => {
+                const newWidths = { ...prev };
+                let changed = false;
+                activeTab.results!.columns.forEach(col => {
+                    if (!newWidths[col]) {
+                        newWidths[col] = 150; // Default width
+                        changed = true;
+                    }
+                });
+                return changed ? newWidths : prev;
+            });
+        }
+    }, [activeTab?.results?.columns]);
+
+    // Handle Resize
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!resizingRef.current) return;
+            const { col, startX, startWidth } = resizingRef.current;
+            const diff = e.clientX - startX;
+            const newWidth = Math.max(50, startWidth + diff); // Min width 50px
+            setColWidths(prev => ({ ...prev, [col]: newWidth }));
+        };
+
+        const handleMouseUp = () => {
+            if (resizingRef.current) {
+                resizingRef.current = null;
+                document.body.style.cursor = 'default';
+            }
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, []);
+
+    const startResize = (e: React.MouseEvent, col: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        resizingRef.current = {
+            col,
+            startX: e.clientX,
+            startWidth: colWidths[col] || 150
+        };
+        document.body.style.cursor = 'col-resize';
+    };
 
     const [confirmState, setConfirmState] = useState<{
         isOpen: boolean;
@@ -300,7 +355,7 @@ export function QueryEditor({
                         <AlertCircle className="w-3 h-3" /> {activeTab.error}
                     </div>
                 )}
-                <div className="flex-1 overflow-auto">
+                <div className="flex-1 overflow-y-scroll custom-scrollbar">
                     {(() => {
                         const results = activeTab?.results;
                         if (!results) return <div className="h-full flex items-center justify-center text-text-muted text-xs italic opacity-50">Execute a query to see results</div>;
@@ -339,18 +394,28 @@ export function QueryEditor({
                             <table className="w-full text-left text-sm border-collapse">
                                 <thead className="bg-panel-bg sticky top-0 z-10 text-xs uppercase tracking-wider text-text-muted select-none">
                                     <tr>
+                                        <th className="px-2 py-1 font-semibold border-b border-r border-border-main whitespace-nowrap bg-panel-bg w-8 text-center text-text-muted/50 select-none text-[10px]">
+                                            #
+                                        </th>
                                         {results.columns.map((col, i) => (
                                             <th
                                                 key={i}
-                                                className="px-4 py-2 font-semibold border-b border-border-main whitespace-nowrap cursor-pointer hover:bg-item-bg hover:text-text-main transition-colors group"
+                                                className="px-2 py-1 font-semibold border-b border-r border-border-main whitespace-nowrap cursor-pointer hover:bg-item-bg hover:text-text-main transition-colors group relative"
+                                                style={{ width: colWidths[col] || 150, minWidth: colWidths[col] || 150, maxWidth: colWidths[col] || 150 }}
                                                 onClick={() => handleSort(col)}
                                             >
-                                                <div className="flex items-center gap-1">
-                                                    {col}
+                                                <div className="flex items-center gap-1 overflow-hidden">
+                                                    <span className="truncate">{col}</span>
                                                     {activeTab.sortState?.col === col && (
-                                                        activeTab.sortState.dir === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-500" /> : <ArrowDown className="w-3 h-3 text-blue-500" />
+                                                        activeTab.sortState.dir === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-500 flex-shrink-0" /> : <ArrowDown className="w-3 h-3 text-blue-500 flex-shrink-0" />
                                                     )}
                                                 </div>
+                                                {/* Resizer Handle */}
+                                                <div
+                                                    className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-500 z-10"
+                                                    onMouseDown={(e) => startResize(e, col)}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                />
                                             </th>
                                         ))}
                                     </tr>
@@ -362,12 +427,16 @@ export function QueryEditor({
                                             className="hover:bg-item-bg border-b border-border-main/30 group"
                                             onContextMenu={(e) => handleRowContextMenu(e, row)}
                                         >
+                                            <td className="px-2 py-0.5 text-text-muted/50 text-center select-none bg-panel-bg/50 group-hover:bg-item-bg transition-colors border-r border-border-main text-[10px]">
+                                                {r_idx + 1}
+                                            </td>
                                             {row.map((val, c_idx) => {
                                                 const isEditing = editingCell?.rowIdx === r_idx && editingCell?.colIdx === c_idx;
                                                 return (
                                                     <td
                                                         key={c_idx}
-                                                        className="px-4 py-1.5 text-text-muted group-hover:text-text-main transition-colors cursor-text"
+                                                        className="px-2 py-0.5 text-text-muted group-hover:text-text-main transition-colors cursor-text border-r border-border-main/50 overflow-hidden truncate"
+                                                        style={{ maxWidth: colWidths[results.columns[c_idx]] || 150 }}
                                                         onDoubleClick={(e) => handleCellDoubleClick(e, r_idx, c_idx, val)}
                                                     >
                                                         {isEditing ? (

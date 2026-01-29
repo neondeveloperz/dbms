@@ -23,6 +23,7 @@ interface SidebarProps {
     setIsResizing: (isResizing: boolean) => void;
     onConnect?: (name: string) => void;
     onRefreshTables?: () => void;
+    onRefreshConnections?: () => void;
 }
 
 export function Sidebar({
@@ -95,7 +96,7 @@ export function Sidebar({
                                         <span className="truncate flex items-center justify-between font-medium">
                                             {conn.name}
                                             <div className="flex items-center gap-2">
-                                                {conn.status !== 'connected' && (
+                                                {conn.status !== 'connected' && conn.status !== 'connecting' && (
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
@@ -107,7 +108,7 @@ export function Sidebar({
                                                         <Database className="w-3 h-3" />
                                                     </button>
                                                 )}
-                                                <span className={cn("w-2 h-2 rounded-full flex-shrink-0 shadow-sm", conn.status === 'connected' ? "bg-green-500 shadow-green-500/20" : "bg-transparent border border-text-muted/50")} />
+                                                <span className={cn("w-2 h-2 rounded-full flex-shrink-0 shadow-sm", conn.status === 'connected' ? "bg-green-500 shadow-green-500/20" : (conn.status === 'connecting' ? "bg-yellow-500 animate-pulse" : "bg-transparent border border-text-muted/50"))} />
                                             </div>
                                         </span>
                                         <span className="text-[10px] text-text-muted/70 uppercase tracking-tight">{conn.type}</span>
@@ -129,9 +130,12 @@ export function Sidebar({
                     >
                         <ChevronRight className={cn("w-4 h-4 transition-transform mr-1.5 text-text-muted", expandedPanes.explorer ? "rotate-90" : "")} />
                         <span className="text-xs font-bold text-text-muted uppercase tracking-wider">Explorer</span>
-                        <div className="ml-auto flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                        <div className="ml-auto flex items-center gap-1">
                             <button
-                                onClick={onRefreshTables}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onRefreshTables?.();
+                                }}
                                 className="p-1 hover:bg-item-bg-hover rounded text-text-muted hover:text-text-main transition-colors"
                                 title="Refresh Tables"
                             >
@@ -152,6 +156,7 @@ export function Sidebar({
                                                 onChange={(e) => setSelectedSchema(prev => ({ ...prev, [activeConnName]: e.target.value }))}
                                                 className="w-full bg-item-bg border border-border-main rounded-md px-2.5 py-1.5 text-xs text-text-main appearance-none outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all font-medium"
                                             >
+                                                <option value="*">All Schemas</option>
                                                 {schemas[activeConnName].map(s => <option key={s} value={s}>{s}</option>)}
                                             </select>
                                             <ChevronDown className="w-3.5 h-3.5 absolute right-6 top-3 text-text-muted pointer-events-none" />

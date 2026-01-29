@@ -5,7 +5,7 @@ export type Connection = {
     url: string;
     type: DbType;
     color: string;
-    status: 'connected' | 'disconnected' | 'error';
+    status: 'connected' | 'disconnected' | 'connecting' | 'error';
     error?: string;
 };
 
