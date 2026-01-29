@@ -174,6 +174,30 @@ pub async fn execute_query(client: &DbClient, query: String) -> Result<QueryResp
                         json!(v)
                     } else if let Ok(v) = row.try_get::<bool, _>(i) {
                         json!(v)
+                    } else if let Ok(v) = row.try_get::<uuid::Uuid, _>(i) {
+                        json!(v.to_string())
+                    } else if let Ok(v) = row.try_get::<serde_json::Value, _>(i) {
+                        v
+                    } else if let Ok(v) = row.try_get::<chrono::NaiveDateTime, _>(i) {
+                        json!(v.to_string())
+                    } else if let Ok(v) = row.try_get::<chrono::DateTime<chrono::Utc>, _>(i) {
+                        json!(v.to_string())
+                    } else if let Ok(v) = row.try_get::<chrono::NaiveDate, _>(i) {
+                        json!(v.to_string())
+                    } else if let Ok(v) = row.try_get::<chrono::NaiveTime, _>(i) {
+                        json!(v.to_string())
+                    } else if let Ok(v) = row.try_get::<i32, _>(i) {
+                        json!(v)
+                    } else if let Ok(v) = row.try_get::<i16, _>(i) {
+                        json!(v)
+                    } else if let Ok(v) = row.try_get::<i8, _>(i) {
+                        json!(v)
+                    } else if let Ok(v) = row.try_get::<f32, _>(i) {
+                        json!(v)
+                    } else if let Ok(v) = row.try_get::<bigdecimal::BigDecimal, _>(i) {
+                        json!(v.to_string())
+                    } else if let Ok(v) = row.try_get::<Vec<u8>, _>(i) {
+                        json!(v)
                     } else {
                         json!(null)
                     };
@@ -232,6 +256,32 @@ pub async fn execute_query(client: &DbClient, query: String) -> Result<QueryResp
                         json!(v)
                     } else if let Ok(v) = row.try_get::<bool, _>(i) {
                         json!(v)
+                    } else if let Ok(v) = row.try_get::<uuid::Uuid, _>(i) {
+                        json!(v.to_string())
+                    } else if let Ok(v) = row.try_get::<Vec<String>, _>(i) {
+                        json!(v)
+                    } else if let Ok(v) = row.try_get::<serde_json::Value, _>(i) {
+                        v
+                    } else if let Ok(v) = row.try_get::<chrono::NaiveDateTime, _>(i) {
+                        json!(v.to_string())
+                    } else if let Ok(v) = row.try_get::<chrono::DateTime<chrono::Utc>, _>(i) {
+                        json!(v.to_string())
+                    } else if let Ok(v) = row.try_get::<chrono::NaiveDate, _>(i) {
+                        json!(v.to_string())
+                    } else if let Ok(v) = row.try_get::<chrono::NaiveTime, _>(i) {
+                        json!(v.to_string())
+                    } else if let Ok(v) = row.try_get::<i16, _>(i) {
+                        json!(v)
+                    } else if let Ok(v) = row.try_get::<i8, _>(i) {
+                        json!(v)
+                    } else if let Ok(v) = row.try_get::<f32, _>(i) {
+                        json!(v)
+                    } else if let Ok(v) = row.try_get::<bigdecimal::BigDecimal, _>(i) {
+                        json!(v.to_string())
+                    } else if let Ok(v) = row.try_get::<Vec<u8>, _>(i) {
+                        json!(v)
+                    } else if let Ok(v) = row.try_get::<chrono::DateTime<chrono::FixedOffset>, _>(i) {
+                        json!(v.to_string())
                     } else {
                         json!(null)
                     };

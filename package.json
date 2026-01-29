@@ -10,7 +10,9 @@
     "lint": "eslint .",
     "lint:rust": "cd src-tauri && cargo fmt --all -- --check",
     "format:rust": "cd src-tauri && cargo fmt --all",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "build:mac-universal": "tauri build --target universal-apple-darwin",
+    "build:mac-intel": "tauri build --target x86_64-apple-darwin"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
