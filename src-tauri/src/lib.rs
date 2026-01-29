@@ -71,7 +71,10 @@ async fn get_schemas(state: State<'_, DatabaseState>, name: String) -> Result<Ve
 }
 
 #[tauri::command]
-async fn get_databases(state: State<'_, DatabaseState>, name: String) -> Result<Vec<String>, String> {
+async fn get_databases(
+    state: State<'_, DatabaseState>,
+    name: String,
+) -> Result<Vec<String>, String> {
     let client = {
         let pools = state.connections.lock().unwrap();
         pools.get(&name).cloned().ok_or("Connection not found")?

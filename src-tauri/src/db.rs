@@ -280,7 +280,8 @@ pub async fn execute_query(client: &DbClient, query: String) -> Result<QueryResp
                         json!(v.to_string())
                     } else if let Ok(v) = row.try_get::<Vec<u8>, _>(i) {
                         json!(v)
-                    } else if let Ok(v) = row.try_get::<chrono::DateTime<chrono::FixedOffset>, _>(i) {
+                    } else if let Ok(v) = row.try_get::<chrono::DateTime<chrono::FixedOffset>, _>(i)
+                    {
                         json!(v.to_string())
                     } else {
                         json!(null)
@@ -485,11 +486,22 @@ pub async fn get_databases(client: &DbClient) -> Result<Vec<String>, String> {
         DbClient::Mssql(client_arc) => {
             let mut client = client_arc.lock().await;
             let query = "SELECT name FROM sys.databases WHERE name NOT IN ('master', 'tempdb', 'model', 'msdb')";
-            let stream = client.simple_query(query).await.map_err(|e| e.to_string())?;
-            let rows: Vec<tiberius::Row> = stream.into_first_result().await.map_err(|e| e.to_string())?;
+            let stream = client
+                .simple_query(query)
+                .await
+                .map_err(|e| e.to_string())?;
+            let rows: Vec<tiberius::Row> = stream
+                .into_first_result()
+                .await
+                .map_err(|e| e.to_string())?;
             let dbs: Vec<String> = rows
                 .iter()
-                .filter_map(|r| r.try_get::<&str, _>(0).ok().flatten().map(|s| s.to_string()))
+                .filter_map(|r| {
+                    r.try_get::<&str, _>(0)
+                        .ok()
+                        .flatten()
+                        .map(|s| s.to_string())
+                })
                 .collect();
             Ok(dbs)
         }
@@ -512,12 +524,13 @@ pub async fn get_databases(client: &DbClient) -> Result<Vec<String>, String> {
             Ok(dbs)
         }
         DbClient::Mongo(client) => {
-            let dbs = client.list_database_names().await.map_err(|e| e.to_string())?;
+            let dbs = client
+                .list_database_names()
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(dbs)
         }
-        DbClient::Redis(_) => {
-            Ok((0..16).map(|i| i.to_string()).collect())
-        }
+        DbClient::Redis(_) => Ok((0..16).map(|i| i.to_string()).collect()),
     }
 }
 
@@ -527,7 +540,7 @@ pub async fn get_tables(client: &DbClient, schema: Option<String>) -> Result<Vec
             println!("Fetching tables for MSSQL, schema: {:?}", schema);
             let mut client = client_arc.lock().await;
             let target_schema = schema.unwrap_or_else(|| "dbo".to_string());
-            
+
             let query = if target_schema == "*" {
                 "SELECT table_schema + '.' + table_name FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema NOT IN ('sys', 'INFORMATION_SCHEMA')".to_string()
             } else {
@@ -555,11 +568,12 @@ pub async fn get_tables(client: &DbClient, schema: Option<String>) -> Result<Vec
             println!("Fetching tables for MySQL, schema: {:?}", schema);
             use sqlx::Row;
             let target_schema = schema.unwrap_or_else(|| "DATABASE()".to_string());
-            
+
             let q = if target_schema == "*" {
-                 "SELECT CONCAT(table_schema, '.', table_name) FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')".to_string()
+                "SELECT CONCAT(table_schema, '.', table_name) FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')".to_string()
             } else if target_schema == "DATABASE()" {
-                "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()".to_string()
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()"
+                    .to_string()
             } else {
                 format!(
                     "SELECT table_name FROM information_schema.tables WHERE table_schema = '{}'",
@@ -579,7 +593,7 @@ pub async fn get_tables(client: &DbClient, schema: Option<String>) -> Result<Vec
             println!("Fetching tables for Postgres, schema: {:?}", schema);
             use sqlx::Row;
             let target_schema = schema.unwrap_or_else(|| "public".to_string());
-            
+
             let q = if target_schema == "*" {
                 "SELECT table_schema || '.' || table_name FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog')".to_string()
             } else {
@@ -622,9 +636,9 @@ pub async fn get_views(client: &DbClient, schema: Option<String>) -> Result<Vec<
         DbClient::Mssql(client_arc) => {
             let mut client = client_arc.lock().await;
             let target_schema = schema.unwrap_or_else(|| "dbo".to_string());
-            
+
             let query = if target_schema == "*" {
-                 "SELECT DISTINCT table_schema + '.' + table_name FROM information_schema.views WHERE table_schema NOT IN ('sys', 'INFORMATION_SCHEMA')".to_string()
+                "SELECT DISTINCT table_schema + '.' + table_name FROM information_schema.views WHERE table_schema NOT IN ('sys', 'INFORMATION_SCHEMA')".to_string()
             } else {
                 format!("SELECT DISTINCT table_name FROM information_schema.views WHERE table_schema = '{}'", target_schema)
             };
@@ -651,7 +665,7 @@ pub async fn get_views(client: &DbClient, schema: Option<String>) -> Result<Vec<
         DbClient::Mysql(pool) => {
             use sqlx::Row;
             let target_schema = schema.unwrap_or_else(|| "DATABASE()".to_string());
-            
+
             let q = if target_schema == "*" {
                 "SELECT DISTINCT CONCAT(table_schema, '.', table_name) FROM information_schema.views WHERE table_schema NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')".to_string()
             } else if target_schema == "DATABASE()" {
@@ -670,7 +684,7 @@ pub async fn get_views(client: &DbClient, schema: Option<String>) -> Result<Vec<
         DbClient::Postgres(pool) => {
             use sqlx::Row;
             let target_schema = schema.unwrap_or_else(|| "public".to_string());
-            
+
             let q = if target_schema == "*" {
                 "SELECT DISTINCT table_schema || '.' || table_name FROM information_schema.views WHERE table_schema NOT IN ('information_schema', 'pg_catalog')".to_string()
             } else {
@@ -696,7 +710,7 @@ pub async fn get_functions(
         DbClient::Mssql(client_arc) => {
             let mut client = client_arc.lock().await;
             let target_schema = schema.unwrap_or_else(|| "dbo".to_string());
-            
+
             let query = if target_schema == "*" {
                 "SELECT DISTINCT routine_schema + '.' + routine_name FROM information_schema.routines WHERE routine_type = 'FUNCTION' AND routine_schema NOT IN ('sys', 'INFORMATION_SCHEMA')".to_string()
             } else {
@@ -727,7 +741,7 @@ pub async fn get_functions(
             let target_schema = schema.unwrap_or_else(|| "DATABASE()".to_string());
 
             let q = if target_schema == "*" {
-                 "SELECT DISTINCT CONCAT(routine_schema, '.', routine_name) FROM information_schema.routines WHERE routine_type = 'FUNCTION' AND routine_schema NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')".to_string()
+                "SELECT DISTINCT CONCAT(routine_schema, '.', routine_name) FROM information_schema.routines WHERE routine_type = 'FUNCTION' AND routine_schema NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')".to_string()
             } else if target_schema == "DATABASE()" {
                 "SELECT DISTINCT routine_name FROM information_schema.routines WHERE routine_type = 'FUNCTION' AND routine_schema = DATABASE()".to_string()
             } else {
@@ -744,7 +758,7 @@ pub async fn get_functions(
         DbClient::Postgres(pool) => {
             use sqlx::Row;
             let target_schema = schema.unwrap_or_else(|| "public".to_string());
-            
+
             let q = if target_schema == "*" {
                 "SELECT DISTINCT routine_schema || '.' || routine_name FROM information_schema.routines WHERE routine_type = 'FUNCTION' AND routine_schema NOT IN ('information_schema', 'pg_catalog')".to_string()
             } else {
