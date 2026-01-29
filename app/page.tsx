@@ -1024,6 +1024,18 @@ export default function Home() {
         editingConnection={editingConnName ? connections.find(c => c.name === editingConnName) || null : null}
         existingConnections={connections}
       />
+
+      <ConfirmDialog
+        isOpen={updateDialog.isOpen}
+        title={updateDialog.title}
+        message={updateDialog.message}
+        confirmText={updateDialog.confirmText}
+        onConfirm={() => {
+          updateDialog.onConfirm?.();
+          setUpdateDialog(prev => ({ ...prev, isOpen: false }));
+        }}
+        onClose={() => setUpdateDialog(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

@@ -18,6 +18,8 @@ jobs:
             args: '--target aarch64-apple-darwin'
           - platform: 'macos-latest' # for Intel
             args: '--target x86_64-apple-darwin'
+          - platform: 'macos-latest' # for Universal
+            args: '--target universal-apple-darwin'
           - platform: 'ubuntu-22.04'
             args: ''
           - platform: 'windows-latest'
