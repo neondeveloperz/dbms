@@ -58,4 +58,11 @@ export type QueryTab = {
     schema?: string;
     isAddingRow?: boolean;
     newRowData?: Record<string, unknown>;
+    pagination?: {
+        limit: number;
+        offset: number;
+        hasMore: boolean;
+        isLoading: boolean;
+    };
+    totalRows?: number;
 };

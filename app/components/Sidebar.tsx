@@ -1,4 +1,4 @@
-import { ChevronRight, Plus, Database, ChevronDown, Table2, Eye, FlaskConical, RefreshCw } from "lucide-react";
+import { ChevronRight, Plus, Database, ChevronDown, Table2, Eye, FlaskConical, RefreshCw, Layers } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 import { Connection } from "../types";
 
@@ -183,7 +183,7 @@ export function Sidebar({
                                     {schemas[activeConnName] && schemas[activeConnName].length > 0 && (
                                         <div className="relative px-4 pt-1">
                                             <div className="text-[10px] text-text-muted/70 uppercase tracking-widest font-bold mb-1 pl-1 flex items-center gap-1.5">
-                                                <Table2 className="w-3 h-3" /> Schema
+                                                <Layers className="w-3 h-3" /> Schema
                                             </div>
                                             <div className="relative">
                                                 <select
@@ -194,7 +194,7 @@ export function Sidebar({
                                                     <option value="*">All Schemas</option>
                                                     {schemas[activeConnName].map(s => <option key={s} value={s}>{s}</option>)}
                                                 </select>
-                                                <ChevronDown className="w-3.5 h-3.5 absolute right-6 top-2 text-text-muted pointer-events-none" />
+                                                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-2 text-text-muted pointer-events-none" />
                                             </div>
                                         </div>
                                     )}
