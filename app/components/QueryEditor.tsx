@@ -1,4 +1,4 @@
-import { ChevronRight, Plus, X, Play, Save, Download, Loader2, RotateCw, Trash2, ArrowUp, ArrowDown, Wrench, FileCode, FileText, Columns, FileJson, AlertCircle, Check, Database, ChevronDown } from "lucide-react";
+import { Plus, X, Play, Save, Download, RotateCw, Trash2, ArrowUp, ArrowDown, Wrench, FileCode, FileText, Columns, AlertCircle, Check, Database, ChevronDown } from "lucide-react";
 import Editor, { useMonaco } from "@monaco-editor/react";
 import { cn } from "@/app/lib/utils";
 import { QueryTab, Connection, Settings } from "../types";
@@ -13,7 +13,7 @@ interface QueryEditorProps {
     createNewTab: () => void;
     activeConnName: string | null;
     connections: Connection[];
-    runQuery: () => void;
+    runQuery: (tabId?: string) => void;
     updateActiveTabQuery: (query: string) => void;
     handleSort: (col: string) => void;
     settings: Settings;
@@ -51,6 +51,7 @@ export function QueryEditor({
     onCancelAddRow,
     onUpdateNewRowData,
     onLoadMore,
+    onExport,
     sidebarWidth
 }: QueryEditorProps) {
 
@@ -650,7 +651,7 @@ export function QueryEditor({
                                     <button
                                         key={opt.format}
                                         onClick={() => {
-                                            if (onExport) onExport(activeTabId, opt.format as any);
+                                            if (onExport) onExport(activeTabId, opt.format);
                                             setExportMenuOpen(false);
                                         }}
                                         className="w-full text-left px-3 py-1.5 hover:bg-item-bg text-text-main text-xs flex flex-col gap-0.5"

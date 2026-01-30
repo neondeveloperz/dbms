@@ -905,7 +905,7 @@ export default function Home() {
     try {
       // 1. Get Total Count
       const countQuery = `SELECT COUNT(*) as count FROM ${tableRef}`;
-      const countRes = await invoke<{ rows: any[][] }>("execute_query", {
+      const countRes = await invoke<{ rows: unknown[][] }>("execute_query", {
         name: activeConnName,
         sql: countQuery
       });
