@@ -8,9 +8,11 @@ interface StatusBarProps {
     setActiveView: (view: string) => void;
     isTerminalOpen: boolean;
     onToggleTerminal: () => void;
+    rowCount?: number;
+    totalRows?: number;
 }
 
-export function StatusBar({ activeConnName, connections, setActiveView, isTerminalOpen, onToggleTerminal }: StatusBarProps) {
+export function StatusBar({ activeConnName, connections, setActiveView, isTerminalOpen, onToggleTerminal, rowCount, totalRows }: StatusBarProps) {
     const activeConnection = activeConnName ? connections.find(c => c.name === activeConnName) : null;
 
     return (
@@ -41,6 +43,13 @@ export function StatusBar({ activeConnName, connections, setActiveView, isTermin
                 )}
             </div>
             <div className="flex items-center gap-4 opacity-80">
+                {rowCount !== undefined && (
+                    <div className="flex items-center gap-1.5 px-2 border-r border-white/20 pr-4 mr-2">
+                        <span className="font-bold">{rowCount}</span>
+                        {totalRows !== undefined && <span className="opacity-70"> / {totalRows}</span>}
+                        Rows
+                    </div>
+                )}
                 <span>UTF-8</span>
                 <div className="flex items-center gap-1 hover:bg-white/10 px-2 py-0.5 rounded cursor-pointer pointer-events-auto" onClick={() => setActiveView('info')} title="Version Info">
                     <Info className="w-3 h-3" />

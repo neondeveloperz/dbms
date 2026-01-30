@@ -1,4 +1,4 @@
-import { Play, AlertCircle, ArrowUp, ArrowDown, X, Plus, Trash2, Check, Database } from "lucide-react";
+import { ChevronRight, Plus, X, Play, Save, Download, Loader2, RotateCw, Trash2, ArrowUp, ArrowDown, Wrench, FileCode, FileText, Columns, FileJson, AlertCircle, Check, Database, ChevronDown } from "lucide-react";
 import Editor, { useMonaco } from "@monaco-editor/react";
 import { cn } from "@/app/lib/utils";
 import { QueryTab, Connection, Settings } from "../types";
@@ -26,6 +26,8 @@ interface QueryEditorProps {
     sidebarWidth: number;
     onDeleteRow?: (tabId: string, row: unknown[], columns: string[]) => void;
     onUpdateCell?: (tabId: string, row: unknown[], columns: string[], colIndex: number, newValue: unknown) => void;
+    onLoadMore?: (tabId: string) => void;
+    onExport?: (tabId: string, format: string) => void;
 }
 
 export function QueryEditor({
@@ -48,6 +50,7 @@ export function QueryEditor({
     onSaveNewRow,
     onCancelAddRow,
     onUpdateNewRowData,
+    onLoadMore,
     sidebarWidth
 }: QueryEditorProps) {
 
@@ -59,6 +62,7 @@ export function QueryEditor({
     const [rowContextMenu, setRowContextMenu] = useState<{ x: number, y: number, row: unknown[] } | null>(null);
     const [editingCell, setEditingCell] = useState<{ rowIdx: number, colIdx: number, value: unknown } | null>(null);
     const [colWidths, setColWidths] = useState<Record<string, number>>({});
+    const [exportMenuOpen, setExportMenuOpen] = useState(false);
     const resizingRef = useRef<{ col: string, startX: number, startWidth: number } | null>(null);
 
     // Initialize column widths when results change
@@ -389,14 +393,25 @@ export function QueryEditor({
                         </button>
                     </div>
                 )}
-                <div className="flex-1 overflow-y-scroll custom-scrollbar">
+                <div
+                    className="flex-1 overflow-y-scroll custom-scrollbar"
+                    onScroll={(e) => {
+                        const target = e.currentTarget;
+                        if (target.scrollHeight - target.scrollTop <= target.clientHeight + 50) {
+                            // User has scrolled near the bottom
+                            if (activeTab?.pagination?.hasMore && !activeTab?.pagination?.isLoading && onLoadMore) {
+                                onLoadMore(activeTabId);
+                            }
+                        }
+                    }}
+                >
                     {(() => {
                         const results = activeTab?.results;
                         if (!results) return <div className="h-full flex items-center justify-center text-text-muted text-xs italic opacity-50">Execute a query to see results</div>;
 
-                        // Sorting logic is handled by parent, but we display the sorted rows (assuming results rows ARE sorted if sorted in state, wait. 
+                        // Sorting logic is handled by parent, but we display the sorted rows (assuming results rows ARE sorted if sorted in state, wait.
                         // The `results` prop passed down should be sorted.
-                        // In page.tsx current logic, sorting is done dynamically inside the render loop! 
+                        // In page.tsx current logic, sorting is done dynamically inside the render loop!
                         // I need to duplicate that sorting logic here or move it to a helper.
                         // For now, I'll copy the sorting logic here.
 
@@ -544,12 +559,115 @@ export function QueryEditor({
                                             })}
                                         </tr>
                                     ))}
+                                    {activeTab.pagination?.isLoading && (
+                                        <tr className="bg-panel-bg/30">
+                                            <td colSpan={results.columns.length + 1} className="py-2 text-center text-xs text-text-muted">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <div className="w-3 h-3 border-2 border-text-muted/30 border-t-text-muted animate-spin rounded-full" />
+                                                    Loading more...
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         );
                     })()}
                 </div>
             </div>
+            {/* Data Table Toolbar (Bottom Position) */}
+            {activeTab?.viewType === 'data' && (
+                <div className="flex items-center gap-1 p-1 bg-panel-bg border-t border-border-main select-none z-20">
+                    {/* View Options */}
+                    {/* Actions */}
+                    <button
+                        onClick={() => onAddRow && onAddRow(activeTabId)}
+                        className="p-1 px-2 hover:bg-white/5 rounded flex items-center gap-1.5 text-text-muted hover:text-text-main transition-colors text-xs" title="New Row">
+                        <Plus className="w-3.5 h-3.5" /> <span className="hidden lg:inline">New Row</span>
+                    </button>
+                    <button
+                        onClick={() => runQuery(activeTabId)}
+                        className="p-1 px-2 hover:bg-white/5 rounded flex items-center gap-1.5 text-text-muted hover:text-text-main transition-colors text-xs" title="Refresh">
+                        <RotateCw className={cn("w-3.5 h-3.5", activeTab.isExecuting ? "animate-spin" : "")} /> <span className="hidden lg:inline">Refresh</span>
+                    </button>
+                    <button
+                        onClick={() => onSaveNewRow && onSaveNewRow(activeTabId)}
+                        className="p-1 px-2 hover:bg-white/5 rounded flex items-center gap-1.5 text-text-muted hover:text-text-main transition-colors text-xs" title="Save">
+                        <Save className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Save</span>
+                    </button>
+                    <button
+                        onClick={() => {
+                            alert("Please right-click a row to delete specific data.");
+                        }}
+                        className="p-1 px-2 hover:bg-white/5 rounded flex items-center gap-1.5 text-text-muted hover:text-text-main transition-colors text-xs opacity-50 cursor-not-allowed" title="Delete Row(s)">
+                        <Trash2 className="w-3.5 h-3.5" /> <span className="hidden lg:inline">Delete</span>
+                    </button>
+
+                    <div className="w-px h-4 bg-border-main mx-1" />
+                    <button className="p-1 px-2 hover:bg-white/5 rounded flex items-center gap-1.5 text-text-muted hover:text-text-main transition-colors text-xs" title="Structure (Coming Soon)">
+                        <Wrench className="w-3.5 h-3.5" /> <span className="hidden xl:inline">Structure</span>
+                    </button>
+                    <button className="p-1 px-2 hover:bg-white/5 rounded flex items-center gap-1.5 text-text-muted hover:text-text-main transition-colors text-xs" title="View SQL">
+                        <FileCode className="w-3.5 h-3.5" /> <span className="hidden xl:inline">SQL</span>
+                    </button>
+
+
+
+
+                    <div className="w-px h-4 bg-border-main mx-1" />
+
+                    {/* Format/Export */}
+                    <button className="p-1 px-2 hover:bg-white/5 rounded flex items-center gap-1.5 text-text-muted hover:text-text-main transition-colors text-xs" title="Switch to Form (Coming Soon)">
+                        <FileText className="w-3.5 h-3.5" /> <span className="hidden xl:inline">Form</span>
+                    </button>
+                    <button className="p-1 px-2 hover:bg-white/5 rounded flex items-center gap-1.5 text-text-muted hover:text-text-main transition-colors text-xs" title="View Columns (Coming Soon)">
+                        <Columns className="w-3.5 h-3.5" /> <span className="hidden xl:inline">Columns</span>
+                    </button>
+
+                    <div className="relative ml-auto">
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setExportMenuOpen(!exportMenuOpen);
+                            }}
+                            className="p-1 px-2 hover:bg-white/5 rounded flex items-center gap-1.5 text-text-muted hover:text-text-main transition-colors text-xs"
+                            title="Export"
+                        >
+                            <Download className="w-3.5 h-3.5" /> <span className="hidden xl:inline">Export</span> <ChevronDown className="w-3 h-3 opacity-50" />
+                        </button>
+                        {exportMenuOpen && (
+                            <div className="absolute right-0 top-full mt-1 bg-panel-bg border border-border-main rounded shadow-xl w-64 z-50 py-1 max-h-[300px] overflow-y-auto">
+                                {[
+                                    { label: "JSON", format: 'json', desc: "JSON Array" },
+                                    { label: "JSON lines/NDJSON", format: 'jsonl', desc: "Newline Delimited JSON" },
+                                    { label: "SQL", format: 'sql', desc: "INSERT Statements" },
+                                    { label: "CSV file", format: 'csv', desc: "Comma Separated" },
+                                    { label: "CSV file (semicolon)", format: 'csv_semicolon', desc: ";" },
+                                    { label: "TSV file", format: 'tsv', desc: "Tab Separated" },
+                                    { label: "MS Excel", format: 'excel', desc: ".xlsx" },
+                                    { label: "XML file", format: 'xml', desc: "XML Data" },
+                                ].map((opt) => (
+                                    <button
+                                        key={opt.format}
+                                        onClick={() => {
+                                            if (onExport) onExport(activeTabId, opt.format as any);
+                                            setExportMenuOpen(false);
+                                        }}
+                                        className="w-full text-left px-3 py-1.5 hover:bg-item-bg text-text-main text-xs flex flex-col gap-0.5"
+                                    >
+                                        <span>{opt.label}</span>
+                                        {/* <span className="text-[10px] text-text-muted/70">{opt.desc}</span> */}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        {/* Overlay to close */}
+                        {exportMenuOpen && (
+                            <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setExportMenuOpen(false)} />
+                        )}
+                    </div>
+                </div>
+            )}
             {/* Confirmation Dialog */}
             <ConfirmDialog
                 isOpen={confirmState.isOpen}

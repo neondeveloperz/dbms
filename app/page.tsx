@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { Pencil, Trash2, Copy, PowerOff, Database, Plus, RefreshCw } from "lucide-react";
 import { cn } from "@/app/lib/utils";
@@ -786,7 +787,72 @@ export default function Home() {
     }));
   }
 
-  function handleTableClick(tableName: string) {
+  const constructSelectQuery = (tableName: string, dbType: DbType, limit: number, offset: number, schema?: string) => {
+    const tableRef = (schema && schema !== '*') ? `${schema}.${tableName}` : tableName;
+
+    switch (dbType) {
+      case 'mssql':
+        return `SELECT * FROM ${tableRef} ORDER BY (SELECT NULL) OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`;
+      case 'mysql':
+      case 'postgres':
+      default:
+        return `SELECT * FROM ${tableRef} LIMIT ${limit} OFFSET ${offset}`;
+    }
+  };
+
+  const handleLoadMore = async (tabId: string) => {
+    setTabs(prev => prev.map(t => {
+      if (t.id === tabId && t.pagination && !t.pagination.isLoading && t.pagination.hasMore) {
+        return { ...t, pagination: { ...t.pagination, isLoading: true } };
+      }
+      return t;
+    }));
+
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab || !tab.pagination || !tab.connName || !tab.tableName) return;
+
+    try {
+      const conn = connections.find(c => c.name === tab.connName);
+      if (!conn) throw new Error("Connection not found");
+
+      const newOffset = tab.pagination.offset + tab.pagination.limit;
+      const query = constructSelectQuery(tab.tableName, conn.type, tab.pagination.limit, newOffset, tab.schema);
+
+      const res = await invoke<{ columns: string[]; rows: unknown[][] }>("execute_query", {
+        name: tab.connName,
+        sql: query
+      });
+
+      setTabs(prev => prev.map(t => {
+        if (t.id === tabId) {
+          return {
+            ...t,
+            results: {
+              columns: t.results?.columns || res.columns,
+              rows: [...(t.results?.rows || []), ...res.rows]
+            },
+            pagination: {
+              limit: tab.pagination!.limit,
+              offset: newOffset,
+              hasMore: res.rows.length === tab.pagination!.limit,
+              isLoading: false
+            }
+          };
+        }
+        return t;
+      }));
+    } catch (e) {
+      console.error("Failed to load more:", e);
+      setTabs(prev => prev.map(t => {
+        if (t.id === tabId) {
+          return { ...t, pagination: { ...t.pagination!, isLoading: false } };
+        }
+        return t;
+      }));
+    }
+  };
+
+  async function handleTableClick(tableName: string) {
     const currentSchema = activeConnName ? selectedSchema[activeConnName] : null;
 
     // Check for existing tab
@@ -805,7 +871,133 @@ export default function Home() {
     const tableRef = (currentSchema && currentSchema !== '*') ? `${currentSchema}.${tableName}` : tableName;
     const schemaArg = (currentSchema && currentSchema !== '*') ? currentSchema : undefined;
 
-    createNewTab(tableName, `SELECT * FROM ${tableRef}`, activeConnName, true, 'data', tableName, schemaArg);
+    const limit = 50;
+    const offset = 0;
+    const conn = connections.find(c => c.name === activeConnName);
+    if (!conn) return;
+
+    const initialQuery = constructSelectQuery(tableName, conn.type, limit, offset, schemaArg);
+
+    // Create new tab with loading state immediately
+    const newId = crypto.randomUUID();
+    const newTab: QueryTab = {
+      id: newId,
+      title: tableName,
+      query: initialQuery,
+      results: null,
+      error: null,
+      connName: activeConnName,
+      isExecuting: true,
+      viewType: 'data',
+      tableName: tableName,
+      schema: schemaArg,
+      pagination: {
+        limit,
+        offset,
+        hasMore: true,
+        isLoading: true
+      }
+    };
+
+    setTabs(prev => [...prev, newTab]);
+    setActiveTabId(newId);
+
+    try {
+      // 1. Get Total Count
+      const countQuery = `SELECT COUNT(*) as count FROM ${tableRef}`;
+      const countRes = await invoke<{ rows: any[][] }>("execute_query", {
+        name: activeConnName,
+        sql: countQuery
+      });
+      const totalRows = Number(countRes.rows[0][0]);
+
+      // 2. Get Initial Data
+      const dataRes = await invoke<{ columns: string[], rows: unknown[][] }>("execute_query", {
+        name: activeConnName,
+        sql: initialQuery
+      });
+
+      setTabs(prev => prev.map(t => {
+        if (t.id === newId) {
+          return {
+            ...t,
+            isExecuting: false,
+            results: dataRes,
+            totalRows: totalRows,
+            pagination: {
+              limit,
+              offset,
+              hasMore: dataRes.rows.length === limit,
+              isLoading: false
+            }
+          };
+        }
+        return t;
+      }));
+
+    } catch (e) {
+      console.error("Failed to load table data:", e);
+      setTabs(prev => prev.map(t => {
+        if (t.id === newId) {
+          return {
+            ...t,
+            isExecuting: false,
+            error: e instanceof Error ? e.message : String(e),
+            pagination: { ...t.pagination!, isLoading: false }
+          };
+        }
+        return t;
+      }));
+    }
+  }
+
+  async function handleExport(tabId: string, format: string) {
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab || !tab.connName) return;
+
+    let filterName = 'Export File';
+    let extensions = ['txt'];
+
+    switch (format) {
+      case 'json': extensions = ['json']; filterName = 'JSON File'; break;
+      case 'jsonl': extensions = ['jsonl', 'ndjson']; filterName = 'JSONL File'; break;
+      case 'sql': extensions = ['sql']; filterName = 'SQL File'; break;
+      case 'csv': extensions = ['csv']; filterName = 'CSV File'; break;
+      case 'csv_semicolon': extensions = ['csv']; filterName = 'CSV File (Semicolon)'; break;
+      case 'tsv': extensions = ['tsv']; filterName = 'TSV File'; break;
+      case 'excel': extensions = ['xlsx']; filterName = 'Excel File'; break;
+      case 'xml': extensions = ['xml']; filterName = 'XML File'; break;
+    }
+
+    try {
+      const filePath = await save({
+        filters: [{
+          name: filterName,
+          extensions: extensions
+        }]
+      });
+
+      if (!filePath) return;
+
+      let query = tab.query;
+      if (tab.viewType === 'data' && tab.tableName) {
+        const schema = tab.schema;
+        const fullTableName = schema ? `${schema}.${tab.tableName}` : tab.tableName;
+        query = `SELECT * FROM ${fullTableName}`;
+      }
+
+      await invoke("export_data", {
+        name: tab.connName,
+        sql: query,
+        format: format,
+        path: filePath
+      });
+
+      alert("Export successful!");
+    } catch (e) {
+      console.error("Export failed:", e);
+      alert(`Export failed: ${e}`);
+    }
   }
 
   async function handleCheckUpdates() {
@@ -957,7 +1149,9 @@ export default function Home() {
           onSaveNewRow={handleSaveNewRow}
           onCancelAddRow={handleCancelAddRow}
           onUpdateNewRowData={handleUpdateNewRowData}
+          onLoadMore={handleLoadMore}
           sidebarWidth={sidebarWidth}
+          onExport={handleExport}
         />
       </div>
 
@@ -974,6 +1168,8 @@ export default function Home() {
         setActiveView={setActiveView}
         isTerminalOpen={isTerminalOpen}
         onToggleTerminal={() => setIsTerminalOpen(prev => !prev)}
+        rowCount={activeTabId ? tabs.find(t => t.id === activeTabId)?.results?.rows.length : undefined}
+        totalRows={activeTabId ? tabs.find(t => t.id === activeTabId)?.totalRows : undefined}
       />
 
       {/* Context Menu - Floating, can stay here or move to Sidebar */}
