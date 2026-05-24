@@ -17,12 +17,12 @@ export function SettingsView({ sidebarWidth, settings, setSettings, setIsResizin
 
     const handleSave = () => {
         setIsSavingSettings(true);
-        // Simulate save
+        setSettings(settings);
         setTimeout(() => {
             setIsSavingSettings(false);
             setSaveSuccess(true);
             setTimeout(() => setSaveSuccess(false), 2000);
-        }, 800);
+        }, 300);
     };
 
     return (

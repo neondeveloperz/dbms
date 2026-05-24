@@ -1,6 +1,7 @@
 import { ChevronRight, Plus, Database, ChevronDown, Table2, Eye, FlaskConical, RefreshCw, Layers } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 import { Connection } from "../types";
+import { APP_VERSION } from "../constants";
 
 interface SidebarProps {
     sidebarWidth: number;
@@ -55,7 +56,7 @@ export function Sidebar({
     onRefreshTables,
     onCheckUpdates,
     isCheckingUpdates,
-    currentVersion = "0.1.0",
+    currentVersion = APP_VERSION,
     databases,
     selectedDatabase,
     onDatabaseChange

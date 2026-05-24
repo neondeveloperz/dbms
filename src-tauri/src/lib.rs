@@ -242,7 +242,6 @@ pub fn run() {
             load_connections,
             debug_path,
             load_settings,
-            load_settings,
             save_settings,
             export_data
         ])
