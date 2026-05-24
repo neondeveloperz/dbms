@@ -1,4 +1,3 @@
-
 use serde::Serialize;
 use serde_json::{json, Value};
 use sqlx::{Column, Row};
