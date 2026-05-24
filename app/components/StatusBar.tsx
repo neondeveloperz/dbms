@@ -1,6 +1,7 @@
 import { Server, Info } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 import { Connection } from "../types";
+import { APP_VERSION } from "../constants";
 
 interface StatusBarProps {
     activeConnName: string | null;
@@ -26,7 +27,7 @@ export function StatusBar({ activeConnName, connections, setActiveView, isTermin
                     onClick={onToggleTerminal}
                     title="Toggle Terminal"
                 >
-                    <Server className="w-3 h-3" /> {/* Reusing Server icon? No, let's use Terminal icon if imported, but earlier I only imported Server. I'll stick to Server icon for connection, wait. User wants Terminal toggle. Use generic icon or add Terminal icon. */}
+                    <Server className="w-3 h-3" />
                     <span className="font-bold">TERMINAL</span>
                 </div>
 
@@ -53,7 +54,7 @@ export function StatusBar({ activeConnName, connections, setActiveView, isTermin
                 <span>UTF-8</span>
                 <div className="flex items-center gap-1 hover:bg-white/10 px-2 py-0.5 rounded cursor-pointer pointer-events-auto" onClick={() => setActiveView('info')} title="Version Info">
                     <Info className="w-3 h-3" />
-                    <span>v0.1.1</span>
+                    <span>v{APP_VERSION}</span>
                 </div>
             </div>
         </div>

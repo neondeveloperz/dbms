@@ -85,7 +85,7 @@ export function ConnectionModal({ isOpen, onClose, onSave, editingConnection, ex
         setTestResult(null);
         try {
             const url = getConnectionString();
-            await invoke("test_connection", { url });
+            await invoke("test_conn", { url });
             setTestResult({ success: true, msg: "Connection successful!" });
         } catch (e: unknown) {
             setTestResult({ success: false, msg: String(e) });

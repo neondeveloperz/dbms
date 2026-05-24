@@ -1,4 +1,3 @@
-use chrono;
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -11,7 +10,7 @@ use tiberius::{Client, Config};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
-use url::Url; // Added chrono import
+use url::Url;
 
 // Enum to hold different client types
 #[derive(Clone)]

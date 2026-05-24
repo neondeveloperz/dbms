@@ -1,5 +1,7 @@
 import { DbType } from "./types";
 
+export const APP_VERSION = "0.1.1";
+
 export const DB_DEFAULTS: Record<DbType, { port: number, user: string }> = {
     mssql: { port: 1433, user: 'sa' },
     mysql: { port: 3306, user: 'root' },

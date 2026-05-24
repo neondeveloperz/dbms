@@ -2,7 +2,7 @@
 
 [![Release](https://github.com/neondeveloperz/dbms/actions/workflows/release.yml/badge.svg)](https://github.com/neondeveloperz/dbms/actions/workflows/release.yml)
 
-A modern, high-performance Database Management System built with **Tauri v2**, **Next.js 15**, and **Rust**. Effortlessly manage multiple database types with a minimalist and blazing-fast interface.
+A modern, high-performance Database Management System built with **Tauri v2**, **Next.js 16**, and **Rust**. Effortlessly manage multiple database types with a minimalist and blazing-fast interface.
 
 ---
 
@@ -20,7 +20,7 @@ A modern, high-performance Database Management System built with **Tauri v2**, *
 ## 🛠️ Tech Stack
 
 ### Frontend
-- **Framework**: [Next.js 15](https://nextjs.org/) (App Router)
+- **Framework**: [Next.js 16](https://nextjs.org/) (App Router)
 - **Styling**: [Tailwind CSS 4](https://tailwindcss.com/)
 - **Icons**: [Lucide React](https://lucide.dev/)
 - **State Management**: React Hooks (useState, useEffect)

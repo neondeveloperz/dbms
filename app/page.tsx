@@ -6,11 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Pencil, Trash2, Copy, PowerOff, Database, Plus, RefreshCw } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 import { Connection, SavedConnection, Settings, QueryTab, DbType } from "./types";
-// import { SETTINGS_DEFAULTS } from "./types"; // Wait, I didn't export defaults there. Constants? No, Defaults were in page.tsx 
-// I need to verify where SETTINGS_DEFAULTS went. I missed moving it!
-// I will define it here for now or fix types.ts?
-// Let's check types.ts content... I didn't verify if I put defaults there. I likely didn't.
-// I will define defaults here.
+import { APP_VERSION } from "./constants";
 
 import { ActivityBar } from "./components/ActivityBar";
 import { StatusBar } from "./components/StatusBar";
@@ -220,14 +216,7 @@ export default function Home() {
           });
         });
 
-        // Auto-connect if enabled (only on initial load effectively, but logic here runs every time)
-        // We probably only want auto-connect once.
-        // Let's keep auto-connect separate or check if we have no connections yet?
-        // Actually, if we refresh, we don't want to re-trigger auto-connect if already connected.
-        // But for simplicity, existing logic was fine for startup.
-        // Refactored to just set state. Auto-connect logic should be separate useEffect or handled differently.
-        // For now, I'll keep the mapping simple and handled start-up separately if needed.
-        // But wait, the original effect handled auto-connect too.
+
       })
       .catch(e => {
         console.error("Failed to load connections:", e);
@@ -236,7 +225,7 @@ export default function Home() {
 
   // Initial load
   useEffect(() => {
-    // We duplicate logic here for startup to include auto-connect which we don't want on manual refresh
+    // Initial load with auto-connect support
     invoke<SavedConnection[]>("load_connections")
       .then(saved => {
         const mapped = saved.map(s => ({
@@ -279,11 +268,7 @@ export default function Home() {
       // Construct new URL with selected database
       let newUrl = conn.url;
       try {
-        // Basic URL parsing to replace database path
-        // This works for standard connection strings like postgres://u:p@h:p/db
         const urlObj = new URL(conn.url);
-
-        // Handle MSSQL specially if it uses searchParams for database, though our backend parser uses path
         if (conn.url.startsWith('sqlserver://')) {
           if (urlObj.searchParams.has('database')) {
             urlObj.searchParams.set('database', dbName);
@@ -300,10 +285,8 @@ export default function Home() {
         return;
       }
 
-      // Connect with new URL (Backend will replace existing connection for this name)
       await invoke("connect_db", { name: connName, url: newUrl });
 
-      // Update local state
       setConnections(prev => prev.map(c => c.name === connName ? { ...c, url: newUrl } : c));
       setSelectedDatabase(prev => ({ ...prev, [connName]: dbName }));
 
@@ -313,22 +296,8 @@ export default function Home() {
       setViews(prev => { const n = { ...prev }; delete n[connName]; return n; });
       setFunctions(prev => { const n = { ...prev }; delete n[connName]; return n; });
 
-      // Refresh to get new tables
-      // We need to wait a bit or just call refreshTables?
-      // We set selectedDatabase, logic in refreshTables needs to know.
-      // But refreshTables reads state. State update is async.
-      // We can force refresh with the new DB set in a timeout or pass it explicitly?
-      // Better: trigger a refresh effect or just call a modified refresh.
-      // Simplest: Just call refreshTables, but state might not be ready.
-      // Actually, we cleared cache, so Sidebar might trigger refresh?
-      // Sidebar "Refresh" button calls onRefreshTables.
-      // Let's just manually trigger data fetch sequence here.
-
-      // Re-fetch everything
+      // Re-fetch everything after a short delay to let React flush state
       setTimeout(() => {
-        // We use a small timeout to let React flush state (like selectedDatabase if we used it, but here we passed dbName)
-        // actually refreshTables uses `selectedSchema`. It relies on `activeConnName`.
-        // If we are switching DB, we probably want to reset schema to default '*' or public.
         setSelectedSchema(prev => { const n = { ...prev }; delete n[connName]; return n; });
         refreshTables();
       }, 100);
@@ -372,15 +341,15 @@ export default function Home() {
     }
 
     const currentSchema = selectedSchema[activeConnName] || '*';
-    console.log("refreshTables called. Active Conn:", activeConnName, "Status:", conn?.status, "Schema:", currentSchema);
+    const schemaParam = currentSchema === '*' ? null : currentSchema;
     try {
-      const fetchedTables = await invoke<string[]>("get_tables", { name: activeConnName, schema: currentSchema });
+      const fetchedTables = await invoke<string[]>("get_tables", { name: activeConnName, schema: schemaParam });
       setTables(prev => ({ ...prev, [activeConnName]: fetchedTables }));
 
-      const fetchedViews = await invoke<string[]>("get_views", { name: activeConnName, schema: currentSchema });
+      const fetchedViews = await invoke<string[]>("get_views", { name: activeConnName, schema: schemaParam });
       setViews(prev => ({ ...prev, [activeConnName]: fetchedViews }));
 
-      const fetchedFunctions = await invoke<string[]>("get_functions", { name: activeConnName, schema: currentSchema });
+      const fetchedFunctions = await invoke<string[]>("get_functions", { name: activeConnName, schema: schemaParam });
       setFunctions(prev => ({ ...prev, [activeConnName]: fetchedFunctions }));
 
       if (!schemas[activeConnName]) {
@@ -420,25 +389,13 @@ export default function Home() {
     setConnections(updatedConns);
     await saveConnectionsToBackend(updatedConns);
 
-    // If connected, update status (assuming modal handles connectivity check separately, 
-    // but here we just blindly trust it's disconnected until we connect).
-    // Actually previous logic: handleConnect did both.
-    // ConnectionModal returns a connection object.
-    // If logic requires immediate connect, we should do it.
-    // The previous UX: "Connect" button in modal -> Connects AND Saves.
-    // So I should connect here.
-
     try {
       await invoke("connect_db", { name: newConn.name, url: newConn.url });
-      // Update status to connected
       const connectedConns = updatedConns.map(c => c.name === newConn.name ? { ...c, status: 'connected' as const } : c);
       setConnections(connectedConns);
       setActiveConnName(newConn.name);
     } catch (e) {
       console.error("Failed to connect after save:", e);
-      // Just save as disconnected
-      console.error("Failed to connect after save:", e);
-      // setGlobalError(`Saved but failed to connect: ${e}`); // Removed unused variable
     }
   }
 
@@ -575,7 +532,6 @@ export default function Home() {
     const targetName = name || activeConnName;
     if (!targetName) return;
 
-    // ... (rest of logic same but using targetName)
     try {
       const conn = connections.find(c => c.name === targetName);
       if (!conn) return;
@@ -645,7 +601,7 @@ export default function Home() {
       // Refresh the data
       await runQuery(tabId);
     } catch (e: unknown) {
-      // setGlobalError(`Update/Delete failed: ${e.toString()}`); // Removed unused variable
+
       console.error(`Update failed SQL: ${sql}\nError: ${String(e)}`);
     }
   }
@@ -1002,7 +958,7 @@ export default function Home() {
 
   async function handleCheckUpdates() {
     setIsCheckingUpdates(true);
-    const CURRENT_VERSION = "0.1.0";
+    const CURRENT_VERSION = APP_VERSION;
     const GITHUB_REPO = "neondeveloperz/dbms";
 
     try {
@@ -1077,7 +1033,6 @@ export default function Home() {
             onRefreshTables={refreshTables}
             onCheckUpdates={handleCheckUpdates}
             isCheckingUpdates={isCheckingUpdates}
-            onRefreshConnections={loadConnections}
           />
         )}
 
@@ -1101,7 +1056,7 @@ export default function Home() {
             <div className="space-y-4">
               <div className="space-y-1">
                 <p className="text-text-main font-medium">Database Manager</p>
-                <p className="text-xs opacity-70">v0.1.0</p>
+                <p className="text-xs opacity-70">v{APP_VERSION}</p>
               </div>
 
               <div className="pt-4 border-t border-border-main/50 space-y-4">
